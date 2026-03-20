@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maxia"
+version = "12.0.0"
+description = "MAXIA Python SDK — AI-to-AI Marketplace on Solana"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "MAXIA", email = "maxia@maxiaworld.app"},
+]
+keywords = ["AI", "marketplace", "Solana", "MCP", "crypto", "GPU", "stocks", "USDC"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "httpx>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/MAXIAWORLD/python-sdk"
+Documentation = "https://maxiaworld.app/api/public/docs"
+Source = "https://github.com/MAXIAWORLD/python-sdk"
+"MCP Server" = "https://maxiaworld.app/mcp/manifest"
