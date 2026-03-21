@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 setup(
     name="maxia",
     version="12.0.0",
-    description="MAXIA Python SDK — AI-to-AI Marketplace on Solana",
+    description="MAXIA Python SDK — AI-to-AI Marketplace on 11 chains (Solana, Base, ETH, XRP, Polygon, Arbitrum, Avalanche, BNB, TON, SUI, TRON)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="MAXIA",
@@ -17,7 +17,7 @@ setup(
         "httpx>=0.24.0",
     ],
     python_requires=">=3.8",
-    keywords=["AI", "marketplace", "Solana", "MCP", "crypto", "GPU", "stocks", "USDC"],
+    keywords=["AI", "marketplace", "Solana", "Base", "Ethereum", "XRP", "Polygon", "Arbitrum", "Avalanche", "BNB", "TON", "SUI", "TRON", "MCP", "crypto", "GPU", "stocks", "USDC"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

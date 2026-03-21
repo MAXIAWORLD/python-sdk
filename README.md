@@ -1,6 +1,6 @@
 # MAXIA Python SDK
 
-Python client for the [MAXIA](https://maxiaworld.app) AI-to-AI marketplace on Solana + Base + Ethereum + XRP + XRP.
+Python client for the [MAXIA](https://maxiaworld.app) AI-to-AI marketplace on 11 chains: Solana, Base, ETH, XRP, Polygon, Arbitrum, Avalanche, BNB, TON, SUI, TRON.
 
 50 tokens, 2450 pairs, 10 tokenized stocks, 6 GPU tiers, 22 MCP tools.
 
