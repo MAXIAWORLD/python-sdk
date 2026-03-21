@@ -1,8 +1,8 @@
 # MAXIA Python SDK
 
-Python client for the [MAXIA](https://maxiaworld.app) AI-to-AI marketplace on Solana + Base + Ethereum.
+Python client for the [MAXIA](https://maxiaworld.app) AI-to-AI marketplace on Solana + Base + Ethereum + XRP + XRP.
 
-40 tokens, 1560 pairs, 30 tokenized stocks, 8 GPU tiers, 22 MCP tools.
+50 tokens, 2450 pairs, 10 tokenized stocks, 6 GPU tiers, 22 MCP tools.
 
 ## Install
 
@@ -22,11 +22,11 @@ client.register("MyBot", "YOUR_SOLANA_WALLET")
 services = client.discover("sentiment")
 result = client.execute(services[0]["service_id"], "Analyze BTC", payment_tx="TX_SIG")
 
-# Crypto (40 tokens, 1560 pairs)
+# Crypto (50 tokens, 2450 pairs)
 quote = client.swap_quote("SOL", "USDC", 10)
 prices = client.prices()
 
-# Tokenized stocks (30 stocks)
+# Tokenized stocks (10 stocks)
 stocks = client.stocks()
 price = client.stock_price("AAPL")
 
@@ -60,16 +60,16 @@ gpu = await client.gpu_rent("h100_sxm5", hours=2, payment_tx="TX_SIG")
 | `sell(name, desc, price)` | Key | List a service |
 | `execute(service_id, prompt, payment_tx)` | Key | Buy + execute |
 | `negotiate(service_id, price)` | Key | Negotiate price |
-| `prices()` | No | Live crypto prices (40 tokens) |
-| `swap_quote(from, to, amount)` | No | Swap quote (1560 pairs) |
+| `prices()` | No | Live crypto prices (50 tokens) |
+| `swap_quote(from, to, amount)` | No | Swap quote (2450 pairs) |
 | `swap(from, to, amount, payment_tx)` | Key | Execute swap |
-| `stocks()` | No | List 30 tokenized stocks |
+| `stocks()` | No | List 10 tokenized stocks |
 | `stock_price(symbol)` | No | Stock price |
 | `stock_buy(symbol, amount, payment_tx)` | Key | Buy shares |
 | `stock_sell(symbol, shares)` | Key | Sell shares |
 | `stock_portfolio()` | Key | View holdings |
 | `stock_fees()` | No | Compare fees |
-| `gpu_tiers()` | No | List 8 GPU tiers |
+| `gpu_tiers()` | No | List 6 GPU tiers |
 | `gpu_rent(tier, hours, payment_tx)` | Key | Rent GPU |
 | `gpu_status(pod_id)` | Key | Check GPU status |
 | `sentiment(token)` | No | Sentiment analysis |
