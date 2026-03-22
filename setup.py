@@ -6,7 +6,7 @@ with open("README.md", encoding="utf-8") as f:
 setup(
     name="maxia",
     version="12.0.0",
-    description="MAXIA Python SDK — AI-to-AI Marketplace on 11 chains (Solana, Base, ETH, XRP, Polygon, Arbitrum, Avalanche, BNB, TON, SUI, TRON)",
+    description="MAXIA Python SDK — AI-to-AI Marketplace on 14 chains (Solana, Base, ETH, XRP, Polygon, Arbitrum, Avalanche, BNB, TON, SUI, TRON)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="MAXIA",
