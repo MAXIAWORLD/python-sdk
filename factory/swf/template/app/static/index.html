@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App</title>
+<style>
+:root{--bg:#f7f7f8;--fg:#1d1d1f;--muted:#6b6b75;--card:#fff;--line:#e3e3e8;--accent:#3557d4}
+@media (prefers-color-scheme:dark){:root{--bg:#141417;--fg:#ececf1;--muted:#9a9aa6;--card:#1d1d22;--line:#2e2e36;--accent:#7d95ff}}
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:16px;margin:0 12px 0 0}nav{display:flex;gap:6px;flex-wrap:wrap}
+button,input,select,textarea{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}button.on,button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{padding:16px;max-width:1200px;margin:auto}.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%}th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:600}tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);width:min(520px,92vw)}
+form label{display:block;margin:8px 0 2px;color:var(--muted)}form input,form select,form textarea{width:100%}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.stat b{display:block;font-size:18px}.err{color:#d33}
+</style>
+</head>
+<body>
+<header><h1 id="title">…</h1><nav id="nav"></nav></header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="bar"><input id="q" placeholder="Rechercher…"><button class="primary" id="add">+ Ajouter</button><a id="csv" href="#"><button>CSV</button></a></div>
+  <div class="wrap"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+  <p id="info"></p>
+</main>
+<dialog id="dlg"><form id="frm" method="dialog"><h3 id="ftitle"></h3><div id="fields"></div><p class="err" id="ferr"></p>
+<div class="bar"><button class="primary" value="save">Enregistrer</button><button value="cancel" formnovalidate>Annuler</button></div></form></dialog>
+<script>
+const $ = s => document.querySelector(s), el = (t, p = {}, ...c) => { const e = Object.assign(document.createElement(t), p); e.append(...c); return e; };
+let S, cur, editing = null, refs = {};
+const key = () => { try { return localStorage.getItem("apiKey") || ""; } catch { return ""; } };
+async function api(path, opt = {}) {
+  const r = await fetch(path, { ...opt, headers: { "content-type": "application/json", "x-api-key": key() } });
+  if (r.status === 401) { const k = prompt("API key"); try { localStorage.setItem("apiKey", k || ""); } catch {} return api(path, opt); }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+const label = (ent, row) => { const f = ent.fields.find(f => ["str", "email"].includes(f.type)); return row ? (f ? row[f.name] : "#" + row.id) : ""; };
+async function loadRefs(ent) {
+  for (const f of ent.fields.filter(f => f.type === "ref")) {
+    const t = S.entities.find(e => e.name === f.ref), d = await api(`/api/${f.ref}?limit=500`);
+    refs[f.ref] = Object.fromEntries(d.items.map(r => [r.id, label(t, r)]));
+  }
+}
+async function show(ent) {
+  cur = ent; document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.textContent === ent.label));
+  await loadRefs(ent);
+  const q = $("#q").value, d = await api(`/api/${ent.name}?limit=200${q ? "&q=" + encodeURIComponent(q) : ""}`);
+  $("#csv").href = `/api/${ent.name}.csv`;
+  $("#th").replaceChildren(el("tr", {}, ...["#", ...ent.fields.map(f => f.label), ""].map(h => el("th", { textContent: h }))));
+  $("#tb").replaceChildren(...d.items.map(r => el("tr", {},
+    el("td", { textContent: r.id }),
+    ...ent.fields.map(f => el("td", { textContent: f.type === "ref" ? (refs[f.ref] || {})[r[f.name]] ?? "" : r[f.name] ?? "" })),
+    el("td", {}, el("button", { textContent: "✎", onclick: () => edit(r) }), " ",
+      el("button", { textContent: "✕", onclick: async () => { if (confirm("Supprimer ?")) { await api(`/api/${ent.name}/${r.id}`, { method: "DELETE" }); show(ent); } } })))));
+  $("#info").textContent = `${d.total} élément(s)`;
+  const by = ent.fields.find(f => f.type === "enum");
+  $("#stats").replaceChildren();
+  if (by) (await api(`/api/${ent.name}/_stats?by=${by.name}`)).groups.forEach(g =>
+    $("#stats").append(el("div", { className: "stat" }, el("b", { textContent: g.count }), `${by.label}: ${g.key ?? "—"}`)));
+}
+function input(f, v) {
+  if (f.type === "enum") return el("select", { name: f.name }, el("option", { value: "" }), ...f.values.map(x => el("option", { value: x, textContent: x, selected: x === v })));
+  if (f.type === "ref") return el("select", { name: f.name }, el("option", { value: "" }), ...Object.entries(refs[f.ref] || {}).map(([id, t]) => el("option", { value: id, textContent: t, selected: +id === v })));
+  if (f.type === "bool") return el("select", { name: f.name }, ...[["", ""], ["true", "Oui"], ["false", "Non"]].map(([x, t]) => el("option", { value: x, textContent: t, selected: String(v) === x })));
+  if (f.type === "text") return el("textarea", { name: f.name, value: v ?? "", rows: 3 });
+  const type = { int: "number", float: "number", email: "email", date: "date", datetime: "datetime-local" }[f.type] || "text";
+  return el("input", { name: f.name, type, step: f.type === "float" ? "any" : undefined, value: v ?? "", required: !!f.required });
+}
+function edit(row) {
+  editing = row; $("#ftitle").textContent = (row ? "Modifier " : "Ajouter ") + cur.label; $("#ferr").textContent = "";
+  $("#fields").replaceChildren(...cur.fields.flatMap(f => [el("label", { textContent: f.label + (f.required ? " *" : "") }), input(f, row?.[f.name])]));
+  $("#dlg").showModal();
+}
+$("#frm").addEventListener("submit", async ev => {
+  if (ev.submitter?.value !== "save") return;
+  ev.preventDefault();
+  const body = Object.fromEntries(cur.fields.map(f => [f.name, new FormData($("#frm")).get(f.name) || null]));
+  try {
+    await api(`/api/${cur.name}${editing ? "/" + editing.id : ""}`, { method: editing ? "PATCH" : "POST", body: JSON.stringify(body) });
+    $("#dlg").close(); show(cur);
+  } catch (e) { $("#ferr").textContent = e.message; }
+});
+$("#add").onclick = () => edit(null);
+$("#q").oninput = () => show(cur);
+(async () => {
+  S = await api("/api/_schema"); document.title = $("#title").textContent = S.title;
+  $("#nav").replaceChildren(...S.entities.map(e => el("button", { textContent: e.label, onclick: () => show(e) })));
+  show(S.entities[0]);
+})();
+</script>
+</body>
+</html>

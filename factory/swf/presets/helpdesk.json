@@ -1,0 +1,25 @@
+{
+  "name": "helpdesk",
+  "title": "Support",
+  "keywords": ["ticket", "support", "helpdesk", "sav", "incident", "réclamation", "assistance"],
+  "entities": [
+    {"name": "customer", "label": "Clients", "fields": [
+      {"name": "name", "type": "str", "required": true},
+      {"name": "email", "type": "email", "required": true},
+      {"name": "plan", "type": "enum", "values": ["free", "pro", "enterprise"], "default": "free"}
+    ]},
+    {"name": "ticket", "label": "Tickets", "fields": [
+      {"name": "subject", "type": "str", "required": true},
+      {"name": "description", "type": "text"},
+      {"name": "priority", "type": "enum", "values": ["basse", "normale", "haute", "urgente"], "default": "normale"},
+      {"name": "status", "type": "enum", "values": ["ouvert", "en cours", "en attente", "résolu", "fermé"], "default": "ouvert"},
+      {"name": "customer_id", "type": "ref", "ref": "customer", "required": true},
+      {"name": "assignee", "type": "str"}
+    ]},
+    {"name": "reply", "label": "Réponses", "fields": [
+      {"name": "ticket_id", "type": "ref", "ref": "ticket", "required": true},
+      {"name": "body", "type": "text", "required": true},
+      {"name": "internal", "type": "bool", "default": false}
+    ]}
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "crm",
+  "title": "CRM",
+  "keywords": ["crm", "client", "customer", "prospect", "lead", "vente", "sales", "deal", "opportunit", "pipeline", "contact"],
+  "entities": [
+    {"name": "company", "label": "Entreprises", "fields": [
+      {"name": "name", "type": "str", "required": true},
+      {"name": "industry", "type": "enum", "values": ["tech", "industrie", "services", "commerce", "autre"]},
+      {"name": "website", "type": "str"},
+      {"name": "phone", "type": "str"},
+      {"name": "city", "type": "str"},
+      {"name": "notes", "type": "text"}
+    ]},
+    {"name": "contact", "label": "Contacts", "fields": [
+      {"name": "first_name", "type": "str", "required": true},
+      {"name": "last_name", "type": "str", "required": true},
+      {"name": "email", "type": "email"},
+      {"name": "phone", "type": "str"},
+      {"name": "company_id", "type": "ref", "ref": "company"},
+      {"name": "status", "type": "enum", "values": ["lead", "prospect", "client", "inactif"], "default": "lead"}
+    ]},
+    {"name": "deal", "label": "Opportunités", "fields": [
+      {"name": "title", "type": "str", "required": true},
+      {"name": "amount", "type": "float"},
+      {"name": "stage", "type": "enum", "values": ["nouveau", "qualifié", "proposition", "négociation", "gagné", "perdu"], "default": "nouveau"},
+      {"name": "close_date", "type": "date"},
+      {"name": "company_id", "type": "ref", "ref": "company"},
+      {"name": "contact_id", "type": "ref", "ref": "contact"}
+    ]},
+    {"name": "activity", "label": "Activités", "fields": [
+      {"name": "subject", "type": "str", "required": true},
+      {"name": "kind", "type": "enum", "values": ["appel", "email", "réunion", "tâche"], "default": "tâche"},
+      {"name": "due_at", "type": "datetime"},
+      {"name": "done", "type": "bool", "default": false},
+      {"name": "contact_id", "type": "ref", "ref": "contact"},
+      {"name": "deal_id", "type": "ref", "ref": "deal"},
+      {"name": "notes", "type": "text"}
+    ]}
+  ]
+}

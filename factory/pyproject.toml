@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swf"
+version = "0.1.0"
+description = "Autonomous, token-frugal software factory (spec -> tested, deployable app)"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115", "uvicorn[standard]>=0.30", "httpx>=0.27", "pytest>=8", "ruff>=0.6"]
+
+[project.optional-dependencies]
+llm = ["claude-agent-sdk>=0.2"]
+
+[project.scripts]
+swf = "swf.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["swf*"]
+
+[tool.setuptools.package-data]
+swf = ["presets/*.json", "template/**/*", "template/.*", "template/.github/workflows/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 200
+extend-exclude = ["swf/template"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S", "I"]
+ignore = ["S101", "S603", "S607"]

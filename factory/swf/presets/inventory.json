@@ -1,0 +1,26 @@
+{
+  "name": "inventory",
+  "title": "Stock",
+  "keywords": ["stock", "inventaire", "inventory", "produit", "product", "entrepôt", "warehouse", "fournisseur", "supplier", "commande"],
+  "entities": [
+    {"name": "supplier", "label": "Fournisseurs", "fields": [
+      {"name": "name", "type": "str", "required": true},
+      {"name": "email", "type": "email"}
+    ]},
+    {"name": "product", "label": "Produits", "fields": [
+      {"name": "sku", "type": "str", "required": true},
+      {"name": "name", "type": "str", "required": true},
+      {"name": "price", "type": "float"},
+      {"name": "quantity", "type": "int", "default": 0},
+      {"name": "reorder_level", "type": "int", "default": 5},
+      {"name": "category", "type": "enum", "values": ["matière", "composant", "fini", "autre"]},
+      {"name": "supplier_id", "type": "ref", "ref": "supplier"}
+    ]},
+    {"name": "movement", "label": "Mouvements", "fields": [
+      {"name": "product_id", "type": "ref", "ref": "product", "required": true},
+      {"name": "kind", "type": "enum", "values": ["entrée", "sortie", "ajustement"], "required": true},
+      {"name": "quantity", "type": "int", "required": true},
+      {"name": "note", "type": "str"}
+    ]}
+  ]
+}
