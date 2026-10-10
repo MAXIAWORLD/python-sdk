@@ -1,5 +1,5 @@
 # Données locales (base, fichiers, clé secrète) — ne jamais versionner
-data/
+/data/
 *.db
 *.db-wal
 *.db-shm

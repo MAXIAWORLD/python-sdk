@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import random
+import re
+import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
@@ -71,6 +73,12 @@ TEMPLATES = [
     ("Demande d'avis", "Fidélisation", "Votre avis compte", "Bonjour {{contact.first_name}},\n\nVotre avis nous aide à progresser : pourriez-vous nous dire en deux minutes comment s'est passée notre collaboration ?\n\nMerci d'avance,\n{{user.name}}"),
 ]
 
+
+
+def _slug(text: str) -> str:
+    """ASCII, lowercase, email-safe local part (« Raphaël Da Silva » → « raphael.dasilva »)."""
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9.-]", "", plain.lower().replace(" ", ""))
 
 def ensure_defaults(session: Session) -> None:
     if session.exec(select(func.count()).select_from(Pipeline)).one() == 0:
@@ -253,7 +261,7 @@ def seed_demo(session: Session, admin: User) -> None:
                 if (first, last) not in used_names:
                     used_names.add((first, last))
                     break
-            email_local = f"{first.lower()}.{last.lower()}".replace(" ", "").replace("é", "e").replace("è", "e").replace("ï", "i").replace("ë", "e")
+            email_local = _slug(f"{first}.{last}")
             lifecycle = "customer" if c.type == "client" else rng.choice(["lead", "mql", "sql", "opportunity"]) if c.type == "prospect" else "evangelist" if c.type == "partner" else "lead"
             created = c.created_at + timedelta(days=rng.randint(0, 30))
             ct = Contact(
@@ -273,7 +281,7 @@ def seed_demo(session: Session, admin: User) -> None:
     for k in range(6):
         first, last = rng.choice(FIRST), rng.choice(LAST)
         created = _dt(t - timedelta(days=rng.randint(0, 25)))
-        ct = Contact(first_name=first, last_name=last, email=f"{first.lower()}.{last.lower()}{k}@gmail.com".replace("é", "e").replace("ï", "i"), lifecycle="lead", lead_score=rng.randint(10, 60), source="Formulaire", owner_id=sellers[1].id, created_at=created, updated_at=created, tags=["inbound"])
+        ct = Contact(first_name=first, last_name=last, email=f"{_slug(f'{first}.{last}')}{k}@gmail.com", lifecycle="lead", lead_score=rng.randint(10, 60), source="Formulaire", owner_id=sellers[1].id, created_at=created, updated_at=created, tags=["inbound"])
         contacts.append(ct)
         session.add(ct)
     session.commit()
@@ -292,6 +300,7 @@ def seed_demo(session: Session, admin: User) -> None:
         "partnership": ["Partenariat intégration wallet", "Co-marketing Web3", "Programme revendeur", "Bridge cross-chain"],
     }
     deals: list[Deal] = []
+    used_titles: set[str] = set()
     for i in range(58):
         pipeline = pipelines[0] if i % 5 in (0, 1, 2) else pipelines[1] if i % 5 == 3 else pipelines[min(2, len(pipelines) - 1)]
         stages = stages_by_pipeline[pipeline.id]
@@ -311,8 +320,17 @@ def seed_demo(session: Session, admin: User) -> None:
         close_at = created + timedelta(days=rng.randint(10, 80))
         if close_at > _dt(t):
             close_at = _dt(t - timedelta(days=rng.randint(0, 10)))
+        options = deal_titles[pipeline.kind if pipeline.kind in deal_titles else "sales"]
+        title = f"{company.name} — {rng.choice(options)}"
+        for option in rng.sample(options, k=len(options)):
+            if title not in used_titles:
+                break
+            title = f"{company.name} — {option}"
+        if title in used_titles:
+            title = f"{title} (phase {sum(1 for x in used_titles if x.startswith(title)) + 1})"
+        used_titles.add(title)
         d = Deal(
-            title=f"{company.name} — {rng.choice(deal_titles[pipeline.kind if pipeline.kind in deal_titles else 'sales'])}",
+            title=title,
             pipeline_id=pipeline.id, stage_id=stage.id, company_id=company.id,
             contact_id=rng.choice(by_company.get(company.id, [None]) or [None]).id if by_company.get(company.id) else None,
             owner_id=rng.choice(sellers).id, amount=amount, mrr=mrr, status="won" if stage.is_won else "lost" if stage.is_lost else "open",
@@ -322,7 +340,7 @@ def seed_demo(session: Session, admin: User) -> None:
             next_step=None if closed else rng.choice(["Envoyer la proposition", "Démo avec l'équipe technique", "Appel de qualification", "Relancer le DAF", "Valider le budget", "Atelier de cadrage"]),
             next_step_date=None if closed else t + timedelta(days=rng.randint(-3, 14)),
             position=float(i), created_at=created, updated_at=created,
-            stage_changed_at=created + timedelta(days=rng.randint(0, 40)),
+            stage_changed_at=close_at if closed else max(created, _dt(t - timedelta(days=rng.choice([1, 2, 4, 6, 9, 12, 16, 21, 28, 45])))),
             description="Opportunité identifiée lors d'un échange avec l'équipe dirigeante. Besoin de centraliser la relation client et la facturation.",
         )
         session.add(d)
@@ -359,12 +377,24 @@ def seed_demo(session: Session, admin: User) -> None:
                 old = sub.mrr
                 sub.quantity += rng.choice([1, 2, 5])
                 session.add(SubscriptionChange(subscription_id=sub.id, company_id=c.id, date=when, kind="expansion", mrr_delta=round(sub.mrr - old, 2), mrr_after=sub.mrr))
-            elif 0.28 <= r < 0.37 and elapsed > 6:
-                when = start + timedelta(days=rng.randint(45, max(46, (t - start).days - 3)))
+            elif 0.28 <= r < 0.33 and elapsed > 4:
+                # Recent churn, so the MRR movements chart has something to show.
+                lo = max(45, (t - start).days - 240)
+                when = start + timedelta(days=rng.randint(lo, max(lo + 1, (t - start).days - 3)))
                 session.add(SubscriptionChange(subscription_id=sub.id, company_id=c.id, date=when, kind="churn", mrr_delta=-sub.mrr, mrr_after=0))
                 sub.status = "canceled"
                 sub.canceled_at = when
                 sub.cancel_reason = rng.choice(["Budget", "Changement d'outil", "Fusion / rachat"])
+            elif 0.33 <= r < 0.37 and elapsed > 3:
+                lo = max(45, (t - start).days - 240)
+                when = start + timedelta(days=rng.randint(lo, max(lo + 1, (t - start).days - 3)))
+                old = sub.mrr
+                if sub.quantity > 1:
+                    sub.quantity = max(1, sub.quantity - rng.choice([1, 2]))
+                else:
+                    sub.discount = 20
+                if round(sub.mrr - old, 2) < 0:
+                    session.add(SubscriptionChange(subscription_id=sub.id, company_id=c.id, date=when, kind="contraction", mrr_delta=round(sub.mrr - old, 2), mrr_after=sub.mrr))
             session.add(sub)
     session.commit()
 

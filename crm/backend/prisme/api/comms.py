@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from ..config import settings as env
 from ..db import get_session
@@ -16,7 +16,7 @@ from ..deps import authenticate_request, require_role
 from ..models import Contact, Document, User
 from ..resources import RESOURCES
 from ..serialize import dump_one
-from ..services import mailer, segments  # noqa: F401
+from ..services import mailer
 from ..services.settings import get_section
 
 router = APIRouter(tags=["comms"])
@@ -34,15 +34,11 @@ def compose(payload: dict = Body(...), session: Session = Depends(get_session), 
     if isinstance(to, str):
         to = [x.strip() for x in to.replace(";", ",").split(",") if x.strip()]
     for address in to:
-        from sqlmodel import select
-
         contact = session.exec(select(Contact).where(Contact.email == address.lower())).first()
         if contact and contact.do_not_contact:
             raise HTTPException(409, f"{address} s'est opposé(e) à toute sollicitation (RGPD).")
     contact_id = payload.get("contact_id")
     if not contact_id and len(to) == 1:
-        from sqlmodel import select
-
         match = session.exec(select(Contact).where(Contact.email == to[0].lower())).first()
         contact_id = match.id if match else None
     row = mailer.send_email(
