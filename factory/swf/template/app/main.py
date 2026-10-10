@@ -205,7 +205,8 @@ async def guard_and_log(request: Request, call_next):
     t0 = time.perf_counter()
     key = os.environ.get("API_KEY", "")
     protected = request.url.path.startswith("/api/") or request.url.path == "/metrics"
-    if key and protected and not hmac.compare_digest(request.headers.get("x-api-key", ""), key):
+    given = request.headers.get("x-api-key") or request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if key and protected and not hmac.compare_digest(given, key):
         resp = JSONResponse({"detail": "unauthorized"}, status_code=401)
     else:
         resp = await call_next(request)

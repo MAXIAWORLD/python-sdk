@@ -1,0 +1,11 @@
+route:
+  receiver: swf
+  group_by: [alertname]
+  group_wait: 10s
+  repeat_interval: 1h
+receivers:
+  - name: swf
+    webhook_configs:
+      # `swf alerthook . --port 9095` on the host: logs alerts, auto-rollback on severity=critical
+      - url: http://host.docker.internal:9095/alert
+        send_resolved: true

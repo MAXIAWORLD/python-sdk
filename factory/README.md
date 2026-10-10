@@ -27,6 +27,7 @@ Capacités de la plateforme et sources : [CAPABILITIES.md](CAPABILITIES.md).
 | `swf review DIR` | revue sécurité des hooks → `.factory/security.md` | oui |
 | `swf deploy DIR --target docker\|local [--dry-run]` | validation bloquante → release → health check → rollback auto | non |
 | `swf monitor DIR [--interval 15 --max-failures 3]` | superviseur : `/health` + `/metrics` → `.factory/monitor.jsonl`, rollback auto | non |
+| `swf alerthook DIR [--port 9095]` | récepteur Alertmanager : alerte `critical` → rollback, journal `.factory/alerts.jsonl` | non |
 | `swf rollback DIR` · `swf status DIR` · `swf cost DIR` | release précédente (copie immuable) · santé · coût LLM par rôle | non |
 
 Le LLM est **désactivé par défaut** : `export SWF_LLM=1` pour l'activer (consomme des tokens). Les modèles et budgets se surchargent par rôle avec `SWF_MODEL_CODER=opus` et `SWF_BUDGET_CODER=1.0`.
@@ -72,6 +73,7 @@ deploy: build → run → /health → promote | rollback          (* = agent LLM
 - Sécurité : `API_KEY` (comparaison à temps constant), conteneur non-root, healthcheck Docker, validation stricte (422), SQL paramétré.
 - Logs JSON par requête (méthode, chemin, statut, ms) → n'importe quel collecteur (Loki, Datadog, CloudWatch).
 - `/metrics` Prometheus (requêtes et latences par route et statut, lignes par entité, taille de la base, webhooks).
+- Supervision externe : `docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d` → Prometheus (règles AppDown, HighErrorRate, SlowRequests, WebhookFailures), Alertmanager → `swf alerthook`, Grafana avec dashboard provisionné. Scrape authentifié par Bearer (`monitoring/api_key`).
 - Webhooks `entity.created|updated|deleted` signés HMAC-SHA256 (`WEBHOOK_URL`, `WEBHOOK_SECRET`), via un worker asynchrone avec retries.
 - UI web sans dépendance (clair/sombre, mobile) générée depuis le schéma.
 - CI GitHub Actions : ruff → pytest → build Docker → smoke.

@@ -3,3 +3,4 @@ data/
 .factory/cache/
 __pycache__/
 *.pyc
+monitoring/api_key

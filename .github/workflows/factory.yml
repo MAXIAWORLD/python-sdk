@@ -15,6 +15,11 @@ jobs:
       - run: pip install -e ".[llm]"
       - run: ruff check .
       - run: pytest
+      - name: monitoring configs (promtool / amtool)
+        run: |
+          swf gen swf/presets/crm.json --out /tmp/mon
+          docker run --rm -v /tmp/mon/monitoring:/m --entrypoint promtool prom/prometheus:v2.55.1 check rules /m/alerts.yml
+          docker run --rm -v /tmp/mon/monitoring:/m --entrypoint amtool prom/alertmanager:v0.27.0 check-config /m/alertmanager.yml
       - name: e2e build + docker
         run: |
           swf new "Cabinet médical avec patients, rendez-vous et factures" --out /tmp/crm --docker

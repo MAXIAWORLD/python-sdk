@@ -116,6 +116,10 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--interval", type=float, default=15)
     a.add_argument("--max-failures", type=int, default=3)
     a.add_argument("--cycles", type=int, default=0, help="0 = forever")
+    a = sub.add_parser("alerthook", help="Alertmanager webhook receiver: critical alert -> auto-rollback")
+    a.add_argument("project")
+    a.add_argument("--port", type=int, default=9095)
+    a.add_argument("--max-requests", type=int, default=0)
     sub.add_parser("presets")
     args = ap.parse_args(argv)
 
@@ -174,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
         out = deploy.rollback(args.project, dry=args.dry_run)
     elif args.cmd == "monitor":
         out = deploy.monitor(args.project, args.interval, args.max_failures, args.cycles)
+    elif args.cmd == "alerthook":
+        out = deploy.alerthook(args.project, args.port, args.max_requests)
     elif args.cmd == "status":
         out = deploy.status(args.project)
     else:

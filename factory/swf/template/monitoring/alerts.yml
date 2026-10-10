@@ -1,0 +1,22 @@
+groups:
+  - name: app
+    rules:
+      - alert: AppDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "App unreachable for 1m"}
+      - alert: HighErrorRate
+        expr: sum(rate(app_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(app_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "5xx > 5% for 5m"}
+      - alert: SlowRequests
+        expr: sum(rate(app_request_seconds_sum[5m])) / clamp_min(sum(rate(app_requests_total[5m])), 1e-9) > 0.5
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Mean latency > 500ms"}
+      - alert: WebhookFailures
+        expr: increase(app_webhooks_total{result=~"failed|dropped"}[15m]) > 0
+        labels: {severity: warning}
+        annotations: {summary: "Webhook deliveries failing"}

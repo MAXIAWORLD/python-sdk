@@ -112,7 +112,7 @@ def generate(spec: dict, out: str | Path) -> dict:
         dst.write_bytes(data)
         manifest[rel] = new
 
-    protected = {"app/hooks/__init__.py": "", "tests/__init__.py": ""}
+    protected = {"app/hooks/__init__.py": "", "tests/__init__.py": "", "monitoring/api_key": ""}
     for e in spec["entities"]:
         protected[f"app/hooks/{e['name']}.py"] = HOOK_STUB.format(name=e["name"])
         protected[f"tests/test_custom_{e['name']}.py"] = TEST_STUB.format(name=e["name"])

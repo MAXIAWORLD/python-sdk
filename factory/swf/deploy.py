@@ -202,3 +202,36 @@ def monitor(project: str | Path, interval: float = 15, max_failures: int = 3, cy
         if not cycles or done < cycles:
             time.sleep(interval)
     return {"cycles": done, "rollbacks": rollbacks, "log": str(logp)}
+
+
+def alerthook(project: str | Path, port: int = 9095, max_requests: int = 0) -> dict:
+    """Alertmanager webhook receiver: logs alerts; firing severity=critical -> rollback (once per alert group)."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    project = Path(project).resolve()
+    logp = project / ".factory" / "alerts.jsonl"
+    stats = {"received": 0, "rollbacks": 0}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))) or b"{}")
+            stats["received"] += 1
+            critical = [a for a in body.get("alerts", []) if a.get("status") == "firing" and a.get("labels", {}).get("severity") == "critical"]
+            row = {"at": time.strftime("%FT%T"), "status": body.get("status"), "alerts": [a.get("labels", {}).get("alertname") for a in body.get("alerts", [])]}
+            if critical and body.get("status") == "firing":
+                row["action"] = rollback(project)
+                stats["rollbacks"] += 1
+            with logp.open("a") as fh:
+                fh.write(json.dumps(row, default=str) + "\n")
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("0.0.0.0", port), Handler)  # noqa: S104 (must be reachable from the alertmanager container)
+    print(json.dumps({"listening": port, "log": str(logp)}), flush=True)
+    while not max_requests or stats["received"] < max_requests:
+        srv.handle_request()
+    srv.server_close()
+    return stats

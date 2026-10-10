@@ -159,3 +159,29 @@ def test_monitor_rolls_back_after_failures(tmp_path, monkeypatch):
     res = deploy.monitor(tmp_path, interval=0, max_failures=2, cycles=2)
     assert res["rollbacks"] == 1 and calls == ["a"]
     assert "rolled-back" in (tmp_path / ".factory/monitor.jsonl").read_text()
+
+
+def test_alerthook_critical_triggers_rollback(tmp_path, monkeypatch):
+    import threading
+    import urllib.request
+
+    generator.generate(crm(), tmp_path)
+    assert (tmp_path / "monitoring/alerts.yml").exists() and (tmp_path / "docker-compose.monitoring.yml").exists()
+    monkeypatch.setattr(deploy, "rollback", lambda p: {"status": "rolled-back"})
+    port = pipeline.free_port()
+    res = {}
+    t = threading.Thread(target=lambda: res.update(deploy.alerthook(tmp_path, port, max_requests=2)))
+    t.start()
+    pipeline.wait_http(f"http://127.0.0.1:{port}/", 0.5)  # let the server bind
+    for sev in ("warning", "critical"):
+        body = json.dumps({"status": "firing", "alerts": [{"status": "firing", "labels": {"alertname": "X", "severity": sev}}]}).encode()
+        for _ in range(20):
+            try:
+                urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/alert", body), timeout=2)
+                break
+            except OSError:
+                import time
+
+                time.sleep(0.1)
+    t.join(5)
+    assert res == {"received": 2, "rollbacks": 1}
