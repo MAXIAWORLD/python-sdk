@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 from .pipeline import wait_http
@@ -158,3 +159,46 @@ def status(project: str | Path) -> dict:
     cur = st["history"][-1] if st["history"] else None
     up = bool(cur) and wait_http(f"http://127.0.0.1:{cur['port']}/health", 2)
     return {"current": cur, "healthy": up, "releases": len(st["history"])}
+
+
+def _scrape(base: str) -> dict:
+    req = urllib.request.Request(base + "/metrics", headers={"x-api-key": os.environ.get("API_KEY", "")})  # noqa: S310
+    with urllib.request.urlopen(req, timeout=3) as r:  # noqa: S310 (local URL built by swf)
+        text = r.read().decode()
+    reqs = err5 = 0
+    for line in text.splitlines():
+        if line.startswith("app_requests_total{"):
+            n = float(line.rsplit(" ", 1)[1])
+            reqs += n
+            err5 += n if 'status="5' in line else 0
+    return {"requests": int(reqs), "errors_5xx": int(err5)}
+
+
+def monitor(project: str | Path, interval: float = 15, max_failures: int = 3, cycles: int = 0) -> dict:
+    """Supervisor: health + metrics every `interval`s, JSONL log, auto-rollback after N consecutive failures."""
+    project = Path(project).resolve()
+    logp = project / ".factory" / "monitor.jsonl"
+    fails, done, rollbacks = 0, 0, 0
+    while not cycles or done < cycles:
+        _, st = _state(project)
+        cur = st["history"][-1] if st["history"] else None
+        row = {"at": time.strftime("%FT%T"), "tag": cur and cur["tag"]}
+        if cur:
+            base = f"http://127.0.0.1:{cur['port']}"
+            row["healthy"] = wait_http(base + "/health", 3)
+            if row["healthy"]:
+                try:
+                    row |= _scrape(base)
+                except OSError as exc:
+                    row["metrics_error"] = str(exc)
+            fails = 0 if row["healthy"] else fails + 1
+            if fails >= max_failures:
+                row["action"] = rollback(project)
+                rollbacks += 1
+                fails = 0
+        with logp.open("a") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+        done += 1
+        if not cycles or done < cycles:
+            time.sleep(interval)
+    return {"cycles": done, "rollbacks": rollbacks, "log": str(logp)}

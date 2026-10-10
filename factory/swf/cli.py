@@ -9,7 +9,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from . import agents, deploy, generator, pipeline
+from . import agents, deploy, generator, nlspec, pipeline
 from . import spec as specmod
 
 PRESETS = Path(__file__).parent / "presets"
@@ -19,14 +19,25 @@ def presets() -> dict[str, dict]:
     return {p.stem: json.loads(p.read_text()) for p in sorted(PRESETS.glob("*.json"))}
 
 
-def match_preset(request: str) -> tuple[str, dict]:
+def preset_score(request: str) -> tuple[int, str, dict]:
     text = request.lower()
-    scored = sorted(((sum(k in text for k in s.get("keywords", [])), n, s) for n, s in presets().items()), reverse=True)
-    score, name, spec = scored[0]
+    return max(((sum(k in text for k in s.get("keywords", [])), n, s) for n, s in presets().items()), key=lambda t: t[0])
+
+
+def match_preset(request: str) -> tuple[str, dict]:
+    score, name, spec = preset_score(request)
     if score == 0:
         name, spec = "crm", presets()["crm"]
-    spec = {k: v for k, v in spec.items() if k != "keywords"}
-    return name, spec
+    return name, {k: v for k, v in spec.items() if k != "keywords"}
+
+
+def offline_spec(request: str) -> tuple[dict, str]:
+    """Strong preset match -> preset; else compose from free text; else CRM preset."""
+    score, name, _ = preset_score(request)
+    if score < 2 and (composed := nlspec.compose(request)):
+        return composed, "composed:offline"
+    name, spec = match_preset(request)
+    return spec, f"preset:{name}"
 
 
 def slug(text: str, default: str) -> str:
@@ -38,10 +49,9 @@ def resolve_spec(request: str, out_dir: Path, preset: str | None, name: str | No
     if preset:
         spec, source = {k: v for k, v in presets()[preset].items() if k != "keywords"}, f"preset:{preset}"
     elif agents.enabled():
-        spec, source = agents.make_spec(request, out_dir / ".factory" / "spec.json"), "llm:product"
+        spec, source = agents.make_spec(request, out_dir), "llm:product"
     else:
-        p, spec = match_preset(request)
-        source = f"preset:{p} (offline; SWF_LLM=1 for a tailored spec)"
+        spec, source = offline_spec(request)
     if name:
         spec["name"], spec["title"] = slug(name, spec["name"]), name
     return specmod.validate(spec), source
@@ -101,6 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--port", type=int, default=8000)
     a.add_argument("--dry-run", action="store_true")
     a.add_argument("--skip-validate", action="store_true")
+    a = sub.add_parser("monitor", help="supervise current release; auto-rollback after N failed health checks")
+    a.add_argument("project")
+    a.add_argument("--interval", type=float, default=15)
+    a.add_argument("--max-failures", type=int, default=3)
+    a.add_argument("--cycles", type=int, default=0, help="0 = forever")
     sub.add_parser("presets")
     args = ap.parse_args(argv)
 
@@ -157,6 +172,8 @@ def main(argv: list[str] | None = None) -> int:
             out = {"status": "failed", "error": str(exc), "note": "nothing promoted; previous release untouched"}
     elif args.cmd == "rollback":
         out = deploy.rollback(args.project, dry=args.dry_run)
+    elif args.cmd == "monitor":
+        out = deploy.monitor(args.project, args.interval, args.max_failures, args.cycles)
     elif args.cmd == "status":
         out = deploy.status(args.project)
     else:

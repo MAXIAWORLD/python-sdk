@@ -10,13 +10,15 @@ swf new "CRM pour suivre prospects et ventes" --out ../apps/crm --name "Acme CRM
 cd ../apps/crm && uvicorn app.main:app           # UI http://localhost:8000 · OpenAPI /docs
 swf deploy . --target docker --port 8000          # health-gated + rollback auto
 ```
-Résultat mesuré (CRM 4 entités, sans LLM) : 25 fichiers générés, lint+sécurité 0,04 s, 18 tests 1,8 s, smoke 0,9 s.
+Résultats mesurés sans LLM : CRM 4 entités → 25 fichiers, environ 3 s pour lint, tests et smoke. Demandes libres (école de musique, cabinet médical, association, flotte de véhicules) → applications au vert.
+Chemin LLM (`new` → `fix` → `feature` → `cost`) testé de bout en bout à travers le **vrai** `claude_agent_sdk` avec un binaire `claude` simulé (`tests/fake_claude.py`, 0 token) : arguments CLI, périmètre `dontAsk`, refus des écritures hors périmètre, ledger.
+Capacités de la plateforme et sources : [CAPABILITIES.md](CAPABILITIES.md).
 
 ## 2. Commandes
 | Commande | Rôle | LLM |
 |---|---|---|
 | `swf presets` | liste des modèles prêts (crm, helpdesk, inventory) | non |
-| `swf spec "<demande>" -o spec.json` | demande → spec | si `SWF_LLM=1`, sinon preset le plus proche |
+| `swf spec "<demande>" -o spec.json` | demande libre → spec | `SWF_LLM=1` : agent produit ; sinon preset (si forte correspondance) ou compositeur hors ligne (`swf/nlspec.py`) |
 | `swf new "<demande>" --out DIR [--preset P] [--docker]` | spec → génération → validation → boucle de correction | optionnel |
 | `swf gen spec.json --out DIR` | régénération incrémentale (hash) | non |
 | `swf validate DIR [--docker]` | lint+sécurité (ruff E,F,W,B,S,I) → pytest → smoke HTTP → build Docker | non |
@@ -24,7 +26,8 @@ Résultat mesuré (CRM 4 entités, sans LLM) : 25 fichiers générés, lint+séc
 | `swf fix DIR` | boucle correction jusqu'au vert, snapshot/restore | oui |
 | `swf review DIR` | revue sécurité des hooks → `.factory/security.md` | oui |
 | `swf deploy DIR --target docker\|local [--dry-run]` | validation bloquante → release → health check → rollback auto | non |
-| `swf rollback DIR` · `swf status DIR` · `swf cost DIR` | release précédente · santé · coût LLM par rôle | non |
+| `swf monitor DIR [--interval 15 --max-failures 3]` | superviseur : `/health` + `/metrics` → `.factory/monitor.jsonl`, rollback auto | non |
+| `swf rollback DIR` · `swf status DIR` · `swf cost DIR` | release précédente (copie immuable) · santé · coût LLM par rôle | non |
 
 Le LLM est **désactivé par défaut** : `export SWF_LLM=1` pour l'activer (consomme des tokens). Les modèles et budgets se surchargent par rôle avec `SWF_MODEL_CODER=opus` et `SWF_BUDGET_CODER=1.0`.
 
@@ -68,6 +71,8 @@ deploy: build → run → /health → promote | rollback          (* = agent LLM
 - Migrations additives automatiques (nouvelles entités/champs sans perte de données).
 - Sécurité : `API_KEY` (comparaison à temps constant), conteneur non-root, healthcheck Docker, validation stricte (422), SQL paramétré.
 - Logs JSON par requête (méthode, chemin, statut, ms) → n'importe quel collecteur (Loki, Datadog, CloudWatch).
+- `/metrics` Prometheus (requêtes et latences par route et statut, lignes par entité, taille de la base, webhooks).
+- Webhooks `entity.created|updated|deleted` signés HMAC-SHA256 (`WEBHOOK_URL`, `WEBHOOK_SECRET`), via un worker asynchrone avec retries.
 - UI web sans dépendance (clair/sombre, mobile) générée depuis le schéma.
 - CI GitHub Actions : ruff → pytest → build Docker → smoke.
 
@@ -80,7 +85,5 @@ deploy: build → run → /health → promote | rollback          (* = agent LLM
 - [ ] `swf review .` (si LLM activé) avant la 1re mise en ligne
 - [ ] Registry derrière un proxy ou limité : `BASE_IMAGE=mirror.gcr.io/library/python:3.12-slim swf deploy …`
 
-## 7. Capacités de la plateforme Claude prises en compte
-Vérifié dans cette session (outils locaux) : Claude Agent SDK Python 0.2.159 (`query`, `ClaudeAgentOptions` : `agents`, `allowed_tools`, `permission_mode` ∈ {default, acceptEdits, plan, bypassPermissions, dontAsk, auto}, `max_turns`, `max_budget_usd`, `model`, `sandbox`, `hooks`, `mcp_servers`, `session_store`), CLI Claude Code 2.1.296, Docker 29 disponible, recherche web disponible.
-Selon des sources tierces (à confirmer sur la page de tarifs Anthropic) : lecture depuis le cache ≈ 0,1× le prix d'entrée, écriture 1,25× (5 min) ou 2× (1 h) ; Batch API −50 % (utile pour générer des specs en masse, pas pour les boucles agentiques) ; tarif majoré au-delà de 200 K tokens d'entrée → le pack de contexte reste sous ~2 K.
-Non utilisés volontairement : computer use (inutile, tout passe par CLI/HTTP), sessions longues (remplacées par des appels courts et bornés + état dans les fichiers).
+## 7. Capacités de la plateforme
+Voir [CAPABILITIES.md](CAPABILITIES.md) : matrice capacité → statut vérifié → usage dans swf.

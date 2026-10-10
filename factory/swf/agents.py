@@ -119,6 +119,7 @@ async def run_role(role: str, task: str, project: Path, write: list[str], bash: 
         permission_mode="dontAsk",  # anything not in allowed_tools is denied: hard scope per agent
         cwd=str(project),
         setting_sources=[],
+        cli_path=os.environ.get("SWF_CLAUDE_CLI") or None,
     )
     t0, out = time.time(), {"role": role, "ok": False, "cost_usd": 0.0, "result": ""}
     async for msg in query(prompt=f"{ctx}\n\nTASK:\n{task}", options=opts):
@@ -165,12 +166,17 @@ def restore(project: Path, snap: Path) -> None:
 
 
 # ---------- high-level agent operations ----------
-def make_spec(request: str, out: Path) -> dict:
-    out.parent.mkdir(parents=True, exist_ok=True)
-    res = asyncio.run(run_role("product", f"Business request: {request}\nWrite the spec to: {out.name}", out.parent, [out.name]))
-    if not out.exists():
+def make_spec(request: str, project: Path) -> dict:
+    """Product agent runs in the project root (shared ledger/cache) and may only write spec.json."""
+    project.mkdir(parents=True, exist_ok=True)
+    tmp = project / "spec.json"
+    res = asyncio.run(run_role("product", f"Business request: {request}\nWrite the spec to: spec.json", project, ["spec.json"]))
+    if not tmp.exists():
         raise RuntimeError(f"product agent wrote no spec: {res.get('result')}")
-    return specmod.load(out)
+    dst = project / ".factory" / "spec.json"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp.replace(dst)
+    return specmod.load(dst)
 
 
 async def _implement(project: Path, tasks: list[dict]) -> list[dict]:

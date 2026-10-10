@@ -111,3 +111,45 @@ def test_api_key(client, monkeypatch):
     assert client.get(f"/api/{first}").status_code == 401
     assert client.get(f"/api/{first}", headers={"x-api-key": "s3cret"}).status_code == 200
     assert client.get("/health").status_code == 200
+
+
+def test_metrics(client):
+    first = SPEC["entities"][0]["name"]
+    make(client, first)
+    text = client.get("/metrics").text
+    assert f'app_rows{{entity="{first}"}} 1' in text
+    assert f'route="/api/{first}",status="201"' in text
+
+
+def test_webhooks_signed(client, monkeypatch):
+    import hashlib
+    import hmac
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from app import main
+
+    got = []
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            got.append((self.headers["x-signature-sha256"], self.rfile.read(int(self.headers["content-length"]))))
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv("WEBHOOK_URL", f"http://127.0.0.1:{srv.server_port}/hook")
+    monkeypatch.setenv("WEBHOOK_SECRET", "k")
+    first = SPEC["entities"][0]["name"]
+    item = make(client, first)
+    client.delete(f"/api/{first}/{item['id']}")
+    main._events.join()
+    srv.shutdown()
+    events = [json.loads(body)["event"] for _, body in got]
+    assert f"{first}.created" in events and f"{first}.deleted" in events
+    sig, body = got[0]
+    assert sig == hmac.new(b"k", body, hashlib.sha256).hexdigest()

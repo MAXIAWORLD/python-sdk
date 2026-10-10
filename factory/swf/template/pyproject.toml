@@ -1,10 +1,12 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
+testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
 line-length = 140
 target-version = "py311"
+extend-exclude = [".factory", "data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "S", "I"]

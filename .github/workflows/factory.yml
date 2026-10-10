@@ -12,11 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
-      - run: pip install -e .
+      - run: pip install -e ".[llm]"
       - run: ruff check .
       - run: pytest
       - name: e2e build + docker
         run: |
-          swf new "CRM ventes" --out /tmp/crm --docker
+          swf new "Cabinet médical avec patients, rendez-vous et factures" --out /tmp/crm --docker
           cd /tmp/crm && swf deploy . --target docker --port 8000 --skip-validate
-          curl -fsS localhost:8000/health
+          curl -fsS localhost:8000/health && curl -fsS localhost:8000/metrics -o /tmp/m && head -5 /tmp/m
+          swf monitor . --interval 1 --cycles 2 && tail -2 .factory/monitor.jsonl

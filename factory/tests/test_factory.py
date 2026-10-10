@@ -129,3 +129,33 @@ def test_snapshot_restore(tmp_path):
     hook.write_text("broken")
     agents.restore(tmp_path, snap)
     assert hook.read_text() == before
+
+
+@pytest.mark.parametrize(
+    ("request_text", "entities"),
+    [
+        ("Gérer une école de musique : élèves, professeurs, cours et paiements", ["ecole", "eleve", "professeur", "cours", "paiement"]),
+        ("Cabinet médical avec patients, rendez-vous et factures", ["patient", "rendez_vous", "facture"]),
+        ("Track vehicles, drivers and missions", ["vehicle", "driver", "mission"]),
+    ],
+)
+def test_free_text_composer(request_text, entities):
+    spec, source = cli.offline_spec(request_text)
+    assert source == "composed:offline"
+    assert [e["name"] for e in specmod.validate(spec)["entities"]] == entities
+
+
+def test_free_text_prefers_strong_preset():
+    assert cli.offline_spec("CRM pour suivre prospects et ventes")[1] == "preset:crm"
+
+
+def test_monitor_rolls_back_after_failures(tmp_path, monkeypatch):
+    generator.generate(crm(), tmp_path)
+    sp = tmp_path / ".factory/deploy.json"
+    sp.write_text(json.dumps({"history": [{"tag": "a", "target": "local", "port": 1, "at": "a"}, {"tag": "b", "target": "local", "port": 1, "at": "b"}]}))
+    calls = []
+    monkeypatch.setattr(deploy, "wait_http", lambda *a, **k: False)
+    monkeypatch.setattr(deploy, "_local_up", lambda *a, **k: calls.append(a[1]))
+    res = deploy.monitor(tmp_path, interval=0, max_failures=2, cycles=2)
+    assert res["rollbacks"] == 1 and calls == ["a"]
+    assert "rolled-back" in (tmp_path / ".factory/monitor.jsonl").read_text()

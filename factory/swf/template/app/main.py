@@ -6,21 +6,26 @@ Business logic goes in app/hooks/<entity>.py, data model in app/schema.json.
 from __future__ import annotations
 
 import csv
+import hashlib
 import hmac
 import importlib
 import io
 import json
 import logging
 import os
+import queue
 import re
 import sqlite3
+import threading
 import time
+import urllib.request
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 BASE = Path(__file__).parent
 SPEC = json.loads((BASE / "schema.json").read_text())
@@ -31,6 +36,53 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 log = logging.getLogger("app")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(message)s")
 _migrated: set[str] = set()
+REQS: defaultdict[tuple, list] = defaultdict(lambda: [0, 0.0])  # (method, route, status) -> [count, seconds]
+HOOKS_STATS = {"ok": 0, "failed": 0, "dropped": 0}
+_events: queue.Queue = queue.Queue(maxsize=1000)
+_worker_started = threading.Lock()
+_worker: threading.Thread | None = None
+
+
+def _deliver(evt: dict) -> None:
+    url = os.environ.get("WEBHOOK_URL", "")
+    if not url.startswith(("http://", "https://")):
+        return
+    body = json.dumps(evt, default=str).encode()
+    sig = hmac.new(os.environ.get("WEBHOOK_SECRET", "").encode(), body, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, body, {"content-type": "application/json", "x-signature-sha256": sig})  # noqa: S310
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=5):  # noqa: S310 (scheme checked above)
+                HOOKS_STATS["ok"] += 1
+                return
+        except OSError:
+            time.sleep(0.2 * 2**attempt)
+    HOOKS_STATS["failed"] += 1
+    log.warning(json.dumps({"webhook": "failed", "event": evt["event"]}))
+
+
+def _work() -> None:
+    while True:
+        evt = _events.get()
+        try:
+            _deliver(evt)
+        finally:
+            _events.task_done()
+
+
+def emit(event: str, entity: str, item: dict) -> None:
+    """Async webhook (worker thread, 3 retries, HMAC-SHA256 signature). No-op without WEBHOOK_URL."""
+    global _worker
+    if not os.environ.get("WEBHOOK_URL"):
+        return
+    with _worker_started:
+        if _worker is None:
+            _worker = threading.Thread(target=_work, daemon=True, name="webhooks")
+            _worker.start()
+    try:
+        _events.put_nowait({"event": f"{entity}.{event}", "at": now(), "data": item})
+    except queue.Full:
+        HOOKS_STATS["dropped"] += 1
 
 
 def db_path() -> str:
@@ -152,11 +204,17 @@ app = FastAPI(title=SPEC.get("title", SPEC["name"]), version=SPEC.get("version",
 async def guard_and_log(request: Request, call_next):
     t0 = time.perf_counter()
     key = os.environ.get("API_KEY", "")
-    if key and request.url.path.startswith("/api/") and not hmac.compare_digest(request.headers.get("x-api-key", ""), key):
+    protected = request.url.path.startswith("/api/") or request.url.path == "/metrics"
+    if key and protected and not hmac.compare_digest(request.headers.get("x-api-key", ""), key):
         resp = JSONResponse({"detail": "unauthorized"}, status_code=401)
     else:
         resp = await call_next(request)
-    ms = round((time.perf_counter() - t0) * 1000, 1)
+    dt = time.perf_counter() - t0
+    ms = round(dt * 1000, 1)
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    m = REQS[(request.method, route, resp.status_code)]
+    m[0] += 1
+    m[1] += dt
     log.info(json.dumps({"m": request.method, "p": request.url.path, "s": resp.status_code, "ms": ms}))
     return resp
 
@@ -166,6 +224,25 @@ def health():
     with db() as con:
         con.execute("SELECT 1")
     return {"status": "ok", "app": SPEC["name"], "version": SPEC.get("version")}
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus text format: requests, latency, errors, webhooks, rows per entity, DB size."""
+    out = ["# TYPE app_requests_total counter", "# TYPE app_request_seconds_sum counter"]
+    for (meth, route, status), (n, secs) in sorted(REQS.items()):
+        lbl = f'method="{meth}",route="{route}",status="{status}"'
+        out += [f"app_requests_total{{{lbl}}} {n}", f"app_request_seconds_sum{{{lbl}}} {secs:.6f}"]
+    out.append("# TYPE app_webhooks_total counter")
+    out += [f'app_webhooks_total{{result="{k}"}} {v}' for k, v in HOOKS_STATS.items()]
+    out.append(f"app_webhook_queue {_events.qsize()}")
+    with db() as con:
+        for n in ENTITIES:
+            count = con.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0]  # noqa: S608
+            out.append(f'app_rows{{entity="{n}"}} {count}')
+    path = Path(db_path())
+    out.append(f"app_db_bytes {path.stat().st_size if path.exists() else 0}")
+    return Response("\n".join(out) + "\n", media_type="text/plain; version=0.0.4")
 
 
 @app.get("/")
@@ -257,6 +334,7 @@ def register(ent: dict) -> None:
             item = fetch(con, cur.lastrowid)
         if h := hook(n, "after_create"):
             h(item)
+        emit("created", n, item)
         return item
 
     @app.patch(f"/api/{n}/{{item_id}}", tags=tag)
@@ -269,7 +347,9 @@ def register(ent: dict) -> None:
             vals["updated_at"] = now()
             sets = ", ".join(f'"{k}" = ?' for k in vals)
             con.execute(f'UPDATE "{n}" SET {sets} WHERE id = ?', [*vals.values(), item_id])  # noqa: S608
-            return fetch(con, item_id)
+            item = fetch(con, item_id)
+        emit("updated", n, item)
+        return item
 
     @app.delete(f"/api/{n}/{{item_id}}", status_code=204, tags=tag)
     def delete_item(item_id: int):
@@ -278,6 +358,7 @@ def register(ent: dict) -> None:
             if h := hook(n, "before_delete"):
                 h(item)
             con.execute(f'DELETE FROM "{n}" WHERE id = ?', (item_id,))  # noqa: S608
+        emit("deleted", n, item)
 
 
 for _ent in SPEC["entities"]:
