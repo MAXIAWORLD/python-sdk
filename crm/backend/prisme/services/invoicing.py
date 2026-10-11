@@ -20,7 +20,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ..models import Activity, Company, Contact, Invoice, Payment, Quote, User, today, utcnow
+from ..models import Activity, Company, Contact, Invoice, Payment, Quote, Setting, User, today, utcnow
 from ..serialize import iso, jsonable
 from . import audit, totals
 from .events import emit
@@ -38,8 +38,6 @@ GENESIS_HASH = "0" * 64
 
 
 def _next_counter(session: Session, key: str) -> int:
-    from ..models import Setting
-
     row = session.get(Setting, "counters")
     counters = dict(row.value) if row and isinstance(row.value, dict) else {}
     value = int(counters.get(key, 0)) + 1

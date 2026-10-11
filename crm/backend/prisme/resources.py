@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import secrets
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,10 +53,11 @@ from .models import (
     today,
     utcnow,
 )
-from .security import encrypt_secret, mask_secret, decrypt_secret
+from .security import decrypt_secret, encrypt_secret, hash_password, mask_secret, password_problems
 from .serialize import jsonable
-from .services import invoicing
+from .services import invoicing, rgpd
 from .services.events import queue_event
+from .services.subscriptions import record_mrr_change
 
 
 def slugify(text: str) -> str:
@@ -110,8 +111,6 @@ class ContactHooks(Hooks):
         return data
 
     def before_save(self, session, obj, changes, created, user):
-        from .services import rgpd
-
         if "consent_marketing" in changes:
             if obj.consent_marketing:
                 obj.consent_at = obj.consent_at or utcnow()
@@ -347,8 +346,6 @@ class SubscriptionHooks(Hooks):
         session.info.setdefault("mrr_before", {})[id(obj)] = 0.0 if created else _mrr_from_changes(obj, changes)
 
     def after_save(self, session, obj, changes, created, user):
-        from .services.subscriptions import record_mrr_change
-
         before = session.info.get("mrr_before", {}).pop(id(obj), None)
         if before is None:
             return
@@ -435,6 +432,12 @@ class EventHooks(Hooks):
     def prepare(self, session, data, obj, user):
         if obj is None and user and not data.get("user_id"):
             data["user_id"] = user.id
+        if obj is None and data.get("start_at") and not data.get("end_at"):
+            # The end is optional in forms: default to a one-hour slot.
+            start = data["start_at"]
+            if isinstance(start, str):
+                start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            data["end_at"] = start + timedelta(hours=1)
         return data
 
     def before_save(self, session, obj, changes, created, user):
@@ -580,16 +583,11 @@ class UserHooks(Hooks):
                 raise HTTPException(409, "Il doit rester au moins un administrateur.")
         password = data.pop("password", None)
         if password:
-            from .security import hash_password, password_problems
-
             problem = password_problems(password)
             if problem:
                 raise HTTPException(422, problem)
             data["password_hash"] = hash_password(password)
         return data
-
-    def before_save(self, session, obj, changes, created, user):
-        pass
 
     def before_delete(self, session, obj, user):
         if user is not None and obj.id == user.id:

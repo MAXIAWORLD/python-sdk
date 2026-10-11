@@ -12,6 +12,8 @@ import logging
 from datetime import date
 from typing import Any
 
+from ..models import Invoice
+from .invoicing import EU_CODES
 from .pdf import render_invoice
 from .settings import get_section
 from .totals import compute
@@ -72,8 +74,6 @@ def _vat_category(rate: float, seller: dict[str, Any], buyer: dict[str, Any]) ->
     if rate > 0:
         return "S", None, None
     buyer_country = buyer.get("country_code") or "FR"
-    from .invoicing import EU_CODES
-
     if buyer_country != "FR" and buyer_country in EU_CODES and buyer.get("vat_number"):
         return "AE", "Autoliquidation", "VATEX-EU-AE"
     if buyer_country not in EU_CODES:
@@ -199,8 +199,6 @@ def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
     elif invoice.kind != "credit_note":
         data["BT-81"] = "30"
     if invoice.kind == "credit_note" and invoice.credit_for_id:
-        from ..models import Invoice
-
         original = session.get(Invoice, invoice.credit_for_id)
         if original is not None:
             data["BG-3"] = [{"BT-25": original.number, "BT-26": original.issue_date}]

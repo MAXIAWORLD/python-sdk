@@ -29,6 +29,7 @@ from ..models import (
     Product,
     Quote,
     Stage,
+    Subscription,
     Task,
     Ticket,
     TicketMessage,
@@ -37,7 +38,7 @@ from ..models import (
 )
 from ..resources import RESOURCES
 from ..serialize import dump_many, dump_one
-from ..services import analytics, invoicing, subscriptions
+from ..services import analytics, audit, invoicing, subscriptions
 
 READ, WRITE, SENSITIVE = "read", "write", "sensitive"
 
@@ -238,8 +239,6 @@ def _related(session: Session, resource: str, obj: dict[str, Any]) -> dict[str, 
     if resource == "companies":
         contacts = session.exec(select(Contact).where(Contact.company_id == oid)).all()
         extra["contacts"] = [{"id": c.id, "name": c.full_name, "email": c.email, "job_title": c.job_title} for c in contacts]
-        from ..models import Subscription
-
         subs = session.exec(select(Subscription).where(Subscription.company_id == oid)).all()
         extra["subscriptions"] = [{"id": s.id, "plan": s.plan, "status": s.status, "mrr": s.mrr} for s in subs]
     if resource == "tickets":
@@ -275,7 +274,7 @@ def get_record(ctx: ToolContext, args: dict[str, Any]) -> Any:
     "Indicateurs clés",
     "Renvoie les indicateurs de pilotage : chiffre d'affaires (mois, année), encaissements, créances et retards, MRR/ARR/churn/NRR, pipeline ouvert et pondéré, taux de conversion, leads, tickets. "
     "scope='dashboard' pour la vue d'ensemble, 'saas' pour le détail des abonnements, 'reports' pour les rapports détaillés (ventes par commercial, produits, temps passé, support).",
-    {"properties": {"scope": {"type": "string", "enum": ["dashboard", "saas", "reports", "pipeline"], "description": "Périmètre"}}, "required": ["scope"]},
+    {"properties": {"scope": {"type": "string", "enum": ["dashboard", "saas", "reports", "pipeline"], "description": "Périmètre (par défaut : dashboard)"}}},
 )
 def get_metrics(ctx: ToolContext, args: dict[str, Any]) -> Any:
     scope = args.get("scope") or "dashboard"
@@ -756,8 +755,6 @@ def execute(ctx: ToolContext, name: str, args: dict[str, Any]) -> tuple[bool, st
         validate(tool_obj, args)
         result = tool_obj.handler(ctx, args)
         if tool_obj.risk != READ:
-            from ..services import audit
-
             audit.record(ctx.session, "ai", ctx.user.id, "tool", None, f"{ctx.channel}: {name}", {"args": args})
             ctx.session.commit()
         text = json.dumps(result, ensure_ascii=False, default=_json_default)

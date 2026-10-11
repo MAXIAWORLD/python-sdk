@@ -295,16 +295,34 @@ def reports(session: Session, start: date | None = None, end: date | None = None
     }
 
 
+STATUS_LABELS = {
+    "quotes": {"draft": "Brouillon", "sent": "Envoyé", "viewed": "Consulté", "accepted": "Signé", "declined": "Refusé", "expired": "Expiré", "invoiced": "Facturé"},
+    "invoices": {"draft": "Brouillon", "issued": "Émise", "sent": "Envoyée", "partial": "Partiellement payée", "paid": "Payée", "overdue": "En retard", "cancelled": "Annulée"},
+    "tickets": {"new": "Nouveau", "open": "Ouvert", "pending": "En attente client", "on_hold": "Suspendu", "resolved": "Résolu", "closed": "Fermé"},
+    "projects": {"planned": "Planifié", "active": "En cours", "on_hold": "En pause", "completed": "Terminé", "cancelled": "Annulé"},
+    "tasks": {"todo": "À faire", "in_progress": "En cours", "review": "En revue", "done": "Terminé", "cancelled": "Annulé"},
+    "deals": {"open": "En cours", "won": "Gagné", "lost": "Perdu"},
+}
+
+
+def _status(kind: str, value: str | None) -> str | None:
+    return STATUS_LABELS.get(kind, {}).get(value or "", value)
+
+
+def _euros(value: float, decimals: int = 0) -> str:
+    return f"{value:,.{decimals}f} €".replace(",", "\u202f").replace(".", ",")
+
+
 SEARCH_TARGETS = [
     ("contacts", Contact, ("first_name", "last_name", "email", "phone", "job_title"), lambda o: o.full_name, lambda o: o.email or o.job_title),
     ("companies", Company, ("name", "domain", "city", "siren"), lambda o: o.name, lambda o: o.city or o.industry),
-    ("deals", Deal, ("title", "next_step"), lambda o: o.title, lambda o: f"{o.amount:,.0f} €".replace(",", " ") if o.amount else o.status),
-    ("quotes", Quote, ("number", "title"), lambda o: f"{o.number} — {o.title or 'Devis'}", lambda o: o.status),
-    ("invoices", Invoice, ("number", "title"), lambda o: f"{o.number or 'Brouillon'} — {o.title or 'Facture'}", lambda o: o.status),
-    ("tickets", Ticket, ("number", "subject"), lambda o: f"{o.number} · {o.subject}", lambda o: o.status),
-    ("projects", Project, ("name", "code"), lambda o: o.name, lambda o: o.status),
-    ("tasks", Task, ("title",), lambda o: o.title, lambda o: o.status),
-    ("products", Product, ("name", "sku", "category"), lambda o: o.name, lambda o: f"{o.unit_price:,.2f} € / {o.unit}".replace(",", " ")),
+    ("deals", Deal, ("title", "next_step"), lambda o: o.title, lambda o: _euros(o.value) if o.value else _status("deals", o.status)),
+    ("quotes", Quote, ("number", "title"), lambda o: f"{o.number} — {o.title or 'Devis'}", lambda o: f"{_status('quotes', o.status)} · {_euros(o.total, 2)}"),
+    ("invoices", Invoice, ("number", "title"), lambda o: f"{o.number or 'Brouillon'} — {o.title or 'Facture'}", lambda o: f"{_status('invoices', o.status)} · {_euros(o.total, 2)}"),
+    ("tickets", Ticket, ("number", "subject"), lambda o: f"{o.number} · {o.subject}", lambda o: _status("tickets", o.status)),
+    ("projects", Project, ("name", "code"), lambda o: o.name, lambda o: _status("projects", o.status)),
+    ("tasks", Task, ("title",), lambda o: o.title, lambda o: _status("tasks", o.status)),
+    ("products", Product, ("name", "sku", "category"), lambda o: o.name, lambda o: f"{_euros(o.unit_price, 2)} / {o.unit}"),
     ("kb-articles", KbArticle, ("title", "summary"), lambda o: o.title, lambda o: o.category),
 ]
 

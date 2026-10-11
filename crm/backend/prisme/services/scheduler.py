@@ -10,8 +10,8 @@ import anyio
 from sqlmodel import select
 
 from ..db import session_scope
-from ..models import Campaign, Event, Notification, Setting, Subscription, Task, User, now_local, today, utcnow
-from . import automation_engine, invoicing, mailer
+from ..models import Campaign, Contact, Event, Notification, Setting, Subscription, Task, User, now_local, today, utcnow
+from . import automation_engine, invoicing, mailer, rgpd
 from .listeners import notify
 from .settings import get_section
 
@@ -35,6 +35,15 @@ def _once_per_day(session, key: str) -> bool:
     return True
 
 
+def _starts_in(minutes: int) -> str:
+    if minutes < 1:
+        return "Maintenant"
+    if minutes < 60:
+        return f"Dans {minutes} min"
+    hours, rest = divmod(minutes, 60)
+    return f"Dans {hours} h {rest:02d}" if rest else f"Dans {hours} h"
+
+
 def tick(minute: int) -> None:
     now = now_local()
     with session_scope() as session:
@@ -42,16 +51,17 @@ def tick(minute: int) -> None:
         if minute % 60 == 0 and get_section(session, "billing").get("auto_overdue", True):
             invoicing.mark_overdue(session)
 
-        # Event reminders
-        soon = utcnow() + timedelta(minutes=16)
-        events = session.exec(select(Event).where(Event.start_at > utcnow(), Event.start_at <= soon)).all()
+        # Event reminders, deduplicated through the notification link.
+        horizon = utcnow() + timedelta(days=1)
+        events = session.exec(select(Event).where(Event.start_at > utcnow(), Event.start_at <= horizon, Event.reminder_minutes.isnot(None))).all()
         for ev in events:
             minutes = int((ev.start_at - utcnow()).total_seconds() // 60)
-            if ev.reminder_minutes is not None and minutes <= ev.reminder_minutes and not (ev.attendees and any(a.get("_reminded") for a in ev.attendees if isinstance(a, dict))):
-                already = session.exec(select(Notification).where(Notification.link == f"/calendar?event={ev.id}")).first()
-                if not already:
-                    notify(session, ev.user_id, f"🗓️ Dans {max(minutes, 0)} min : {ev.title}", ev.location or ev.meeting_url, f"/calendar?event={ev.id}", "info")
-                    session.commit()
+            if minutes > (ev.reminder_minutes or 0):
+                continue
+            link = f"/calendar?event={ev.id}"
+            if session.exec(select(Notification.id).where(Notification.link == link)).first() is None:
+                notify(session, ev.user_id, f"🗓️ {_starts_in(minutes)} : {ev.title}", ev.location or ev.meeting_url, link, "info")
+                session.commit()
 
         if now.hour >= 8 and _once_per_day(session, "daily"):
             _daily(session)
@@ -63,11 +73,11 @@ def tick(minute: int) -> None:
         except Exception:  # noqa: BLE001
             log.warning("Synchronisation IMAP impossible", exc_info=True)
 
+    from ..api.marketing import send_campaign_now  # local import: the API layer imports this module
+
     with session_scope() as session:
         due = session.exec(select(Campaign).where(Campaign.status == "scheduled", Campaign.scheduled_at <= utcnow())).all()
         for campaign in due:
-            from ..api.marketing import send_campaign_now
-
             try:
                 send_campaign_now(session, campaign, None)
             except Exception:  # noqa: BLE001
@@ -75,6 +85,8 @@ def tick(minute: int) -> None:
 
 
 def _daily(session) -> None:
+    from ..api.sales import invoice_subscription  # local import: the API layer imports this module
+
     # Tasks due today -> notification per assignee
     tasks = session.exec(select(Task).where(Task.due_date == today(), Task.status.notin_(["done", "cancelled"]))).all()
     per_user: dict[int, int] = {}
@@ -88,8 +100,6 @@ def _daily(session) -> None:
     subs = session.exec(select(Subscription).where(Subscription.auto_invoice == True, Subscription.status == "active", Subscription.current_period_end <= today())).all()  # noqa: E712
     admin = session.exec(select(User).where(User.role == "admin").order_by(User.id)).first()
     for sub in subs:
-        from ..api.sales import invoice_subscription
-
         try:
             invoice_subscription(session, sub, admin)
         except Exception:  # noqa: BLE001
@@ -99,9 +109,6 @@ def _daily(session) -> None:
     # RGPD retention (opt-in)
     rules = get_section(session, "rgpd")
     if rules.get("auto_anonymize"):
-        from . import rgpd
-        from ..models import Contact
-
         for item in rgpd.retention_candidates(session):
             contact = session.get(Contact, item["id"])
             if contact:

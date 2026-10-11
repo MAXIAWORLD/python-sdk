@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from urllib.parse import parse_qs
 
 import anyio
 import mcp_types as types
@@ -21,8 +22,10 @@ from sqlmodel import select
 from . import __version__
 from .ai import tools
 from .config import settings as env
-from .db import session_scope
+from .db import init_db, session_scope
+from .deps import user_from_api_token
 from .models import User
+from .services.settings import get_section
 
 log = logging.getLogger("prisme.mcp")
 
@@ -167,8 +170,6 @@ def build_server() -> Server:
 async def run_stdio() -> None:
     from mcp.server.stdio import stdio_server
 
-    from .db import init_db
-
     init_db()
     server = build_server()
     async with stdio_server() as (read_stream, write_stream):
@@ -197,11 +198,6 @@ class MCPHttp:
 
     @staticmethod
     def _authenticate(scope: dict[str, Any]) -> int | None:
-        from urllib.parse import parse_qs
-
-        from .deps import user_from_api_token
-        from .services.settings import get_section
-
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
         token = None
         auth = headers.get("authorization", "")

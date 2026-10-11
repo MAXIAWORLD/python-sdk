@@ -1,0 +1,30 @@
+# Prisme CRM — `docker compose up -d` puis http://localhost:8000
+services:
+  prisme:
+    build: .
+    image: prisme-crm:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # URL publique utilisée dans les emails (liens de signature de devis, factures, formulaires, désinscription).
+      PRISME_PUBLIC_URL: ${PRISME_PUBLIC_URL:-http://localhost:8000}
+      TZ: Europe/Paris
+      # PostgreSQL (optionnel) : décommentez le service « db » ci-dessous et cette ligne.
+      # PRISME_DATABASE_URL: postgresql+psycopg://prisme:prisme@db:5432/prisme
+    volumes:
+      - prisme-data:/data
+
+  # db:
+  #   image: postgres:17-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: prisme
+  #     POSTGRES_PASSWORD: prisme
+  #     POSTGRES_DB: prisme
+  #   volumes:
+  #     - prisme-db:/var/lib/postgresql/data
+
+volumes:
+  prisme-data:
+  # prisme-db:

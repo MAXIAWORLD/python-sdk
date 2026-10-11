@@ -21,6 +21,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
 import { useAiGenerate } from "@/components/ai/AiGenerate";
 import { BarList, MrrMovements, RevenueChart } from "@/components/charts/Charts";
+import { OnboardingCard } from "@/components/dashboard/Onboarding";
 import { AnimatedNumber, Delta, Panel, StatTile } from "@/components/data/blocks";
 import { Glass } from "@/components/glass/Glass";
 import { Scene3D } from "@/components/three/Scene3D";
@@ -128,10 +129,12 @@ export default function Dashboard() {
         </AnimatePresence>
       </Glass>
 
+      <OnboardingCard />
+
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatTile label="MRR" value={k.mrr ?? 0} format={(v) => moneyShort(v)} trend={mrrTrend} icon={<Repeat className="size-4" />} hint={`ARR ${moneyShort(k.arr)} · NRR ${percent(k.nrr, 0)}`} onClick={() => navigate("/subscriptions")} />
-        <StatTile label="Encaissements du mois" value={k.cash_month ?? 0} format={(v) => moneyShort(v)} delta={k.cash_month_delta} period="vs M-1" trend={cashTrend} icon={<Wallet className="size-4" />} accent="linear-gradient(135deg,#1baf7a,#22d3ee)" onClick={() => navigate("/invoices?status=paid")} />
+        <StatTile label="MRR" value={k.mrr ?? 0} format={(v) => moneyShort(v)} trend={mrrTrend} icon={<Repeat className="size-4" />} hint={`ARR ${moneyShort(k.arr)}`} onClick={() => navigate("/subscriptions")} />
+        <StatTile label="Encaissements du mois" value={k.cash_month ?? 0} format={(v) => moneyShort(v)} delta={k.cash_month_delta ?? undefined} hint={k.cash_month_delta == null && cashTrend.length > 1 ? `M-1 : ${moneyShort(cashTrend[cashTrend.length - 2])}` : undefined} period="vs M-1" trend={cashTrend} icon={<Wallet className="size-4" />} accent="linear-gradient(135deg,#1baf7a,#22d3ee)" onClick={() => navigate("/invoices?status=paid")} />
         <StatTile label="Pipeline pondéré" value={k.pipeline_weighted ?? 0} format={(v) => moneyShort(v)} hint={`${number(k.pipeline_count)} affaires · ${moneyShort(k.pipeline_open)} au total`} icon={<Target className="size-4" />} accent="linear-gradient(135deg,#8b5cf6,#ec4899)" onClick={() => navigate("/deals")} />
         <StatTile label="Créances en retard" value={k.overdue_amount ?? 0} format={(v) => moneyShort(v)} hint={`${number(k.overdue_count)} facture(s) · ${moneyShort(k.receivables)} à encaisser`} icon={<AlertTriangle className="size-4" />} accent="linear-gradient(135deg,#ff9f0a,#ff375f)" onClick={() => navigate("/invoices?status=overdue")} />
         <StatTile label="Taux de conversion (90 j)" value={k.win_rate ?? 0} format={(v) => percent(v, 1)} hint={`${number(k.won_month_count)} gagnée(s) ce mois · ${moneyShort(k.won_month_value)}`} icon={<Gauge className="size-4" />} accent="linear-gradient(135deg,#5b6cff,#22d3ee)" />

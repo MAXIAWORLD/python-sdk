@@ -12,7 +12,11 @@ from fpdf import FPDF, FontFace
 from fpdf.enums import OutputIntentSubType, TableBordersLayout, XPos, YPos
 from fpdf.output import PDFICCProfile
 
+from sqlmodel import select
+
 from ..config import settings as env
+from ..models import Invoice, Payment
+from .invoicing import buyer_snapshot, seller_snapshot
 from .settings import get_section
 from .totals import compute
 
@@ -428,11 +432,6 @@ def _payment_box(pdf: _Doc, seller: dict[str, Any], reference: str, extra: str |
 
 
 def render_invoice(session: Any, invoice: Any) -> bytes:
-    from ..models import Invoice, Payment
-    from sqlmodel import select
-
-    from .invoicing import buyer_snapshot, seller_snapshot
-
     company = get_section(session, "company")
     branding = get_section(session, "branding")
     accent = _hex(branding.get("accent"))
@@ -533,8 +532,6 @@ def render_invoice(session: Any, invoice: Any) -> bytes:
 
 
 def render_quote(session: Any, quote: Any) -> bytes:
-    from .invoicing import buyer_snapshot, seller_snapshot
-
     branding = get_section(session, "branding")
     accent = _hex(branding.get("accent"))
     seller = quote.seller or seller_snapshot(session)

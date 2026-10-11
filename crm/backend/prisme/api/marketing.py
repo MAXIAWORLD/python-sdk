@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlmodel import Session, select
 
+from ..crud import coerce
 from ..db import get_session
 from ..deps import get_current_user, require_role
 from ..models import Campaign, CampaignRecipient, Contact, EmailTemplate, Segment, User, utcnow
@@ -134,8 +135,6 @@ def send_campaign(campaign_id: int, payload: dict = Body(default={}), session: S
     if campaign is None:
         raise HTTPException(404, "Campagne introuvable.")
     if payload.get("scheduled_at"):
-        from ..crud import coerce
-
         campaign.status = "scheduled"
         campaign.scheduled_at = coerce(Campaign, "scheduled_at", payload["scheduled_at"])
         session.add(campaign)
