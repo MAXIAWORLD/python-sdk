@@ -214,7 +214,8 @@ Toutes les variables sont optionnelles.
 | `PRISME_DISABLE_SCHEDULER` | `1` pour désactiver les tâches planifiées (relances, rappels…) | — |
 
 SQLite (mode WAL) convient très bien à une équipe de quelques dizaines de personnes. PostgreSQL est pris en charge
-via `PRISME_DATABASE_URL` (dépendance optionnelle `postgres`, déjà incluse dans l'image Docker).
+via `PRISME_DATABASE_URL` (dépendance optionnelle `postgres`, déjà incluse dans l'image Docker ; suite de tests validée
+sur PostgreSQL 16).
 
 ---
 
@@ -258,6 +259,7 @@ cd crm/frontend && npm install && npm run dev
 
 # Tests et vérification des types
 cd crm/backend && uv run pytest
+# … ou sur PostgreSQL : PRISME_DATABASE_URL=postgresql+psycopg://… uv run --extra postgres pytest
 cd crm/frontend && npm run typecheck
 ```
 
