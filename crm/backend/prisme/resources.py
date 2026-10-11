@@ -13,7 +13,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, func, select
 
 from .config import settings as env
-from .crud import Hooks, Resource
+from .crud import Hooks, Resource, to_utc
 from .models import (
     Activity,
     AIProvider,
@@ -96,10 +96,6 @@ class CompanyHooks(Hooks):
                 "Suppression impossible : des factures émises sont rattachées à cette entreprise "
                 "(conservation légale de 10 ans). Passez-la plutôt en statut « inactive ».",
             )
-        for model in (Contact, Deal, Project, Ticket, Task, Activity, Event, Document, Quote, Invoice, EmailMessage):
-            for row in session.exec(select(model).where(model.company_id == obj.id)).all():
-                row.company_id = None
-                session.add(row)
 
 
 class ContactHooks(Hooks):
@@ -120,12 +116,6 @@ class ContactHooks(Hooks):
         if "unsubscribed_at" in changes and obj.unsubscribed_at:
             obj.consent_marketing = False
 
-    def before_delete(self, session, obj, user):
-        for model in (Deal, Task, Activity, Event, Document, Quote, Invoice, EmailMessage, Ticket, FormSubmission, CampaignRecipient, ConsentLog):
-            for row in session.exec(select(model).where(model.contact_id == obj.id)).all():
-                row.contact_id = None
-                session.add(row)
-
 
 class ActivityHooks(Hooks):
     def prepare(self, session, data, obj, user):
@@ -136,15 +126,16 @@ class ActivityHooks(Hooks):
     def after_save(self, session, obj, changes, created, user):
         if not created:
             return
+        when = to_utc(obj.occurred_at) if obj.occurred_at else utcnow()
         if obj.contact_id and obj.type in ("call", "email", "meeting"):
             contact = session.get(Contact, obj.contact_id)
-            if contact:
-                contact.last_contacted_at = obj.occurred_at or utcnow()
+            if contact and (not contact.last_contacted_at or to_utc(contact.last_contacted_at) < when):
+                contact.last_contacted_at = when
                 session.add(contact)
         if obj.company_id:
             company = session.get(Company, obj.company_id)
-            if company:
-                company.last_activity_at = utcnow()
+            if company and (not company.last_activity_at or to_utc(company.last_activity_at) < when):
+                company.last_activity_at = when
                 session.add(company)
 
 
@@ -381,8 +372,8 @@ class ProjectHooks(Hooks):
 
     def before_save(self, session, obj, changes, created, user):
         if created and not obj.code:
-            count = session.exec(select(func.count()).select_from(Project)).one()
-            obj.code = f"PRJ-{count + 1:03d}"
+            last_id = session.exec(select(func.max(Project.id))).one() or 0
+            obj.code = f"PRJ-{last_id + 1:03d}"  # from the highest id, so deletions never produce duplicate codes
 
 
 class TaskHooks(Hooks):

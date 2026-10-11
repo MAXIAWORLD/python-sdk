@@ -84,7 +84,8 @@ def notification_listener(item: dict[str, Any]) -> None:
             if deal:
                 company = session.get(Company, deal.company_id) if deal.company_id else None
                 text = f"{deal.title}" + (f" — {company.name}" if company else "")
-                for user in session.exec(select(User).where(User.is_active == True)).all():  # noqa: E712
+                # The person who closed the deal already sees it in the interface: notify the rest of the team.
+                for user in session.exec(select(User).where(User.is_active == True, User.id != actor)).all():  # noqa: E712
                     notify(session, user.id, f"🎉 Affaire gagnée : {_fmt(deal.value)}", text, f"/deals/{deal.id}", "deal")
         elif event == "quote.accepted":
             notify(session, None, f"✍️ Devis {payload.get('number')} signé", f"Montant : {_fmt(payload.get('total'))}", f"/quotes/{payload.get('id')}", "success")

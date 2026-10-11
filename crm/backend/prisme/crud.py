@@ -23,7 +23,7 @@ from sqlmodel import Session, SQLModel, select
 from .db import get_session
 from .deps import get_current_user, has_role
 from .models import User, utcnow
-from .serialize import dump, dump_many, dump_one, jsonable
+from .serialize import dump, dump_many, dump_one, fk_map, jsonable, table_models
 from .services import audit
 from .services.events import emit, flush_events
 
@@ -57,6 +57,30 @@ class Hooks:
         pass
 
 
+LABELS: dict[type[SQLModel], str] = {}  # model -> French label, filled by Resource
+
+
+def detach_references(session: Session, obj: SQLModel) -> None:
+    """Clear references to a record about to be deleted (foreign keys are not enforced on SQLite).
+
+    Optional references are set to NULL; a mandatory one blocks the deletion with a clear message.
+    """
+    target = type(obj)
+    for model in table_models().values():
+        for column, ref in fk_map(model).items():
+            if ref is not target:
+                continue
+            rows = session.exec(select(model).where(getattr(model, column) == obj.id)).all()  # type: ignore[attr-defined]
+            if not rows:
+                continue
+            if not model.__table__.columns[column].nullable:  # type: ignore[attr-defined]
+                label = LABELS.get(model, model.__tablename__)
+                raise HTTPException(409, f"Suppression impossible : {len(rows)} {label}(s) y sont rattaché(e)s. Supprimez-les ou réaffectez-les d'abord.")
+            for row in rows:
+                setattr(row, column, None)
+                session.add(row)
+
+
 @dataclass
 class Resource:
     name: str  # URL segment, e.g. "contacts"
@@ -72,6 +96,9 @@ class Resource:
     hooks: Hooks = field(default_factory=Hooks)
     audit: bool = True
     events: bool = True
+
+    def __post_init__(self) -> None:
+        LABELS.setdefault(self.model, self.label)
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -179,6 +206,7 @@ class Resource:
     def delete(self, session: Session, obj_id: int, user: User | None, *, commit: bool = True) -> dict[str, Any]:
         obj = self.get_obj(session, obj_id, user)
         self.hooks.before_delete(session, obj, user)
+        detach_references(session, obj)
         data = dump(obj)
         session.delete(obj)
         session.flush()

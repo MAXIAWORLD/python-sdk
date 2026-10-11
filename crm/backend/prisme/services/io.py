@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, SQLModel, select
 
 from ..models import Company, Contact, Invoice, Payment, User
-from ..serialize import dump, jsonable
+from ..serialize import dump, jsonable, table_models
 from .settings import get_section
 
 IMPORT_FIELDS = {
@@ -240,6 +240,4 @@ def backup(session: Session) -> bytes:
 
 
 def _model_for(table_name: str) -> Any:
-    from ..serialize import _model_for_table
-
-    return _model_for_table().get(table_name)
+    return table_models().get(table_name)

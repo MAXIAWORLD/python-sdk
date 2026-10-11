@@ -15,12 +15,12 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import { CSS } from "@dnd-kit/utilities";
 import { useQuery } from "@tanstack/react-query";
 import { AlarmClock, CalendarDays, Columns3, Kanban, Plus, Repeat, Rows3, Target, Trophy } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { FilterChip, PageHeader } from "@/components/data/blocks";
+import { useConfetti } from "@/components/crm/Confetti";
 import { RecordDialog } from "@/components/entity/EntityForm";
 import { Glass } from "@/components/glass/Glass";
 import { Button } from "@/components/ui/button";
@@ -59,44 +59,6 @@ interface Board {
 }
 
 const LOST_REASONS = ["Prix trop élevé", "Choix d'un concurrent", "Pas de budget", "Projet abandonné / reporté", "Pas de réponse", "Besoin mal qualifié", "Autre"];
-
-/* -------------------------------------------------------------------------- */
-/* Celebration                                                                */
-/* -------------------------------------------------------------------------- */
-
-function Celebration({ burst }: { burst: number }) {
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 36 }, (_, i) => ({
-        id: `${burst}-${i}`,
-        x: (Math.random() - 0.5) * 900,
-        y: -Math.random() * 520 - 120,
-        r: Math.random() * 720 - 360,
-        color: ["#5b6cff", "#8b5cf6", "#22d3ee", "#f472b6", "#fbbf24", "#34d399"][i % 6],
-        size: 6 + Math.random() * 8,
-        round: Math.random() > 0.5,
-      })),
-    [burst],
-  );
-  return (
-    <AnimatePresence>
-      {burst > 0 && (
-        <div key={burst} className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] flex justify-center">
-          {particles.map((p) => (
-            <motion.span
-              key={p.id}
-              initial={{ x: 0, y: 0, opacity: 1, rotate: 0 }}
-              animate={{ x: p.x, y: [0, p.y, p.y + 700], opacity: [1, 1, 0], rotate: p.r }}
-              transition={{ duration: 2.2, ease: [0.15, 0.7, 0.4, 1], times: [0, 0.45, 1] }}
-              className="absolute bottom-10"
-              style={{ width: p.size, height: p.round ? p.size : p.size * 0.45, background: p.color, borderRadius: p.round ? 999 : 2 }}
-            />
-          ))}
-        </div>
-      )}
-    </AnimatePresence>
-  );
-}
 
 /* -------------------------------------------------------------------------- */
 /* Cards & columns                                                            */
@@ -225,7 +187,7 @@ export default function PipelinePage() {
   const [lost, setLost] = useState<{ dealId: number; stageId: number; position: number } | null>(null);
   const [lostReason, setLostReason] = useState(LOST_REASONS[0]);
   const [lostDetail, setLostDetail] = useState("");
-  const [burst, setBurst] = useState(0);
+  const confetti = useConfetti();
 
   const { data: board, isLoading } = useQuery({
     queryKey: ["deals-board", pipelineId, mine ? me?.id : null, dq],
@@ -274,7 +236,7 @@ export default function PipelinePage() {
     try {
       const updated = await api.post<Deal>(`/deals/${dealId}/move`, { stage_id: stageId, position, lost_reason: lostReasonText });
       if (updated.status === "won") {
-        setBurst((b) => b + 1);
+        confetti.fire();
         toast.success("Affaire gagnée ! 🎉", { description: `${updated.title} · ${money(updated.value, "EUR", { decimals: 0 })}` });
       }
       invalidate("deals", "deals-board");
@@ -479,7 +441,7 @@ export default function PipelinePage() {
         </div>
       </Dialog>
 
-      <Celebration burst={burst} />
+      {confetti.element}
     </div>
   );
 }

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import unicodedata
 from datetime import date, timedelta
 from typing import Any
 
@@ -144,23 +145,76 @@ def buyer_snapshot(session: Session, company_id: int | None, contact_id: int | N
     return {}
 
 
-_COUNTRIES = {
-    "france": "FR", "belgique": "BE", "belgium": "BE", "suisse": "CH", "switzerland": "CH", "luxembourg": "LU",
-    "allemagne": "DE", "germany": "DE", "espagne": "ES", "spain": "ES", "italie": "IT", "italy": "IT",
-    "royaume-uni": "GB", "united kingdom": "GB", "uk": "GB", "états-unis": "US", "etats-unis": "US", "usa": "US",
-    "united states": "US", "canada": "CA", "pays-bas": "NL", "netherlands": "NL", "portugal": "PT", "irlande": "IE",
-    "ireland": "IE", "singapour": "SG", "singapore": "SG", "émirats arabes unis": "AE", "dubai": "AE", "maroc": "MA",
+_COUNTRY_NAMES = {
+    # Union européenne
+    "AT": ("autriche", "austria"), "BE": ("belgique", "belgium"), "BG": ("bulgarie", "bulgaria"), "CY": ("chypre", "cyprus"),
+    "CZ": ("republique tcheque", "tchequie", "czech republic", "czechia"), "DE": ("allemagne", "germany", "deutschland"),
+    "DK": ("danemark", "denmark"), "EE": ("estonie", "estonia"), "ES": ("espagne", "spain", "espana"), "FI": ("finlande", "finland"),
+    "FR": ("france", "republique francaise"), "GR": ("grece", "greece"), "HR": ("croatie", "croatia"), "HU": ("hongrie", "hungary"),
+    "IE": ("irlande", "ireland"), "IT": ("italie", "italy", "italia"), "LT": ("lituanie", "lithuania"), "LU": ("luxembourg",),
+    "LV": ("lettonie", "latvia"), "MT": ("malte", "malta"), "NL": ("pays-bas", "pays bas", "netherlands", "hollande"),
+    "PL": ("pologne", "poland"), "PT": ("portugal",), "RO": ("roumanie", "romania"), "SE": ("suede", "sweden"),
+    "SI": ("slovenie", "slovenia"), "SK": ("slovaquie", "slovakia"),
+    # Europe hors UE
+    "CH": ("suisse", "switzerland", "schweiz"), "GB": ("royaume-uni", "royaume uni", "united kingdom", "uk", "angleterre", "grande-bretagne"),
+    "NO": ("norvege", "norway"), "IS": ("islande", "iceland"), "LI": ("liechtenstein",), "MC": ("monaco",), "AD": ("andorre", "andorra"),
+    "UA": ("ukraine",), "RS": ("serbie", "serbia"), "TR": ("turquie", "turkey", "turkiye"),
+    # Amériques
+    "US": ("etats-unis", "etats unis", "usa", "united states", "united states of america"), "CA": ("canada",), "MX": ("mexique", "mexico"),
+    "BR": ("bresil", "brazil"), "AR": ("argentine", "argentina"), "CL": ("chili", "chile"), "CO": ("colombie", "colombia"),
+    # Asie, Océanie
+    "JP": ("japon", "japan"), "CN": ("chine", "china"), "HK": ("hong kong", "hong-kong"), "TW": ("taiwan",), "KR": ("coree du sud", "south korea", "korea"),
+    "IN": ("inde", "india"), "SG": ("singapour", "singapore"), "TH": ("thailande", "thailand"), "VN": ("vietnam", "viet nam"),
+    "ID": ("indonesie", "indonesia"), "MY": ("malaisie", "malaysia"), "PH": ("philippines",), "AU": ("australie", "australia"),
+    "NZ": ("nouvelle-zelande", "nouvelle zelande", "new zealand"),
+    # Moyen-Orient, Afrique
+    "AE": ("emirats arabes unis", "emirats", "united arab emirates", "uae", "dubai"), "SA": ("arabie saoudite", "saudi arabia"),
+    "QA": ("qatar",), "IL": ("israel",), "LB": ("liban", "lebanon"), "MA": ("maroc", "morocco"), "TN": ("tunisie", "tunisia"),
+    "DZ": ("algerie", "algeria"), "SN": ("senegal",), "CI": ("cote d'ivoire", "cote divoire", "ivory coast"), "CM": ("cameroun", "cameroon"),
+    "EG": ("egypte", "egypt"), "ZA": ("afrique du sud", "south africa"), "NG": ("nigeria",), "KE": ("kenya",), "MU": ("maurice", "ile maurice", "mauritius"),
 }
+_COUNTRIES = {name: code for code, names in _COUNTRY_NAMES.items() for name in names}
+
 EU_CODES = {"AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI", "SK"}
 
 
+# Zero-rated operations: (UNTDID 5305 category, mention required on the invoice, VATEX code)
+VAT_EXEMPTIONS = {
+    "reverse_charge": ("AE", "Autoliquidation — TVA due par le preneur (art. 283-2 du CGI et art. 196 de la directive 2006/112/CE)", "VATEX-EU-AE"),
+    "intra_eu_goods": ("K", "Exonération de TVA, art. 262 ter I du CGI (livraison intracommunautaire)", "VATEX-EU-IC"),
+    "export_goods": ("G", "Exonération de TVA, art. 262 I du CGI (exportation)", "VATEX-EU-G"),
+    "export_services": ("G", "TVA non applicable — art. 259-1 du CGI (prestation de services, preneur établi hors UE)", "VATEX-EU-G"),
+}
+AUTO_VAT_MENTIONS = {mention for _, mention, _ in VAT_EXEMPTIONS.values()} | {totals.FRANCHISE_MENTION}
+
+
+def vat_exemption(seller: dict[str, Any], buyer: dict[str, Any], nature: str | None) -> tuple[str, str, str] | None:
+    """Exemption that applies to zero-rated lines, given the parties and the nature of the operation."""
+    if seller.get("vat_regime") == "franchise":
+        return "E", totals.FRANCHISE_MENTION, "VATEX-FR-FRANCHISE"
+    country = buyer.get("country_code") or "FR"
+    if country == "FR":
+        return None
+    goods = nature == "goods"
+    if country in EU_CODES:
+        if not buyer.get("vat_number"):
+            return None
+        return VAT_EXEMPTIONS["intra_eu_goods" if goods else "reverse_charge"]
+    return VAT_EXEMPTIONS["export_goods" if goods else "export_services"]
+
+
+def _plain(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower().replace("’", "'").split())
+
+
 def country_code(country: str | None) -> str:
-    if not country:
+    """ISO 3166-1 alpha-2 code of a country name or code; France when empty, "" when unknown."""
+    if not country or not country.strip():
         return "FR"
     value = country.strip()
-    if len(value) == 2:
+    if len(value) == 2 and value.isalpha():
         return value.upper()
-    return _COUNTRIES.get(value.lower(), "FR")
+    return _COUNTRIES.get(_plain(value), "")
 
 
 def siren_is_valid(siren: str | None) -> bool:
@@ -202,6 +256,12 @@ def legal_checks(session: Session, invoice: Invoice) -> tuple[list[str], list[st
         errors.append("Client manquant : sélectionnez une entreprise ou un contact.")
     elif not (buyer.get("address") and buyer.get("city")):
         errors.append(f"Adresse de facturation du client « {buyer['name']} » incomplète.")
+    if buyer.get("name") and not buyer.get("country_code"):
+        errors.append(f"Pays du client non reconnu (« {buyer.get('country')} ») : indiquez son code pays ISO à deux lettres (ex. JP, US) dans sa fiche.")
+    if buyer.get("country_code") and buyer.get("country_code") != "FR":
+        taxed = [line for line in invoice.lines or [] if (line.get("type") or "item") == "item" and line.get("vat_rate")]
+        if taxed and vat_exemption(seller, buyer, invoice.nature):
+            warnings.append("Client établi hors de France : vérifiez la TVA appliquée (autoliquidation ou exonération attendue, taux 0 %).")
     if buyer.get("type") == "company":
         if buyer.get("country_code") == "FR" and not buyer.get("siren"):
             warnings.append("SIREN du client non renseigné (mention obligatoire avec la facturation électronique).")
@@ -289,8 +349,15 @@ def apply_totals(session: Session, doc: Quote | Invoice) -> None:
     doc.subtotal = result["subtotal"]
     doc.tax_total = result["tax_total"]
     doc.total = result["total"]
-    if franchise:
-        doc.vat_mention = totals.FRANCHISE_MENTION
+    # VAT mention for zero-rated operations (franchise, reverse charge, intra-EU supply, export), unless set by hand.
+    buyer = doc.buyer if getattr(doc, "locked", False) and doc.buyer else buyer_snapshot(session, doc.company_id, doc.contact_id)
+    exemption = vat_exemption(company, buyer, doc.nature)
+    zero_rated = any((line.get("type") or "item") == "item" and not line.get("vat_rate") for line in doc.lines)
+    if exemption and zero_rated:
+        if not doc.vat_mention or doc.vat_mention in AUTO_VAT_MENTIONS:
+            doc.vat_mention = exemption[1]
+    elif doc.vat_mention in AUTO_VAT_MENTIONS:
+        doc.vat_mention = None
 
 
 def invoice_defaults(session: Session, invoice: Invoice) -> None:

@@ -86,7 +86,7 @@ export function AppShell() {
         <div className="mx-auto w-full max-w-[1640px]">
           <Topbar />
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={pageKey} initial={{ opacity: 0, y: 10, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -6, filter: "blur(3px)" }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
+            <motion.div key={pageKey} initial={{ opacity: 0, y: 10, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)", transitionEnd: { filter: "none", transform: "none" } }} exit={{ opacity: 0, y: -6, filter: "blur(3px)" }} transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}>
               <Suspense fallback={<PageFallback />}>
                 <Outlet />
               </Suspense>

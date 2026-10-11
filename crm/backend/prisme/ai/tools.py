@@ -20,7 +20,6 @@ from sqlmodel import Session, select
 
 from ..models import (
     Activity,
-    Company,
     Contact,
     Deal,
     EmailMessage,
@@ -37,7 +36,7 @@ from ..models import (
     today,
 )
 from ..resources import RESOURCES
-from ..serialize import dump_many, dump_one
+from ..serialize import dump_one
 from ..services import analytics, audit, invoicing, subscriptions
 
 READ, WRITE, SENSITIVE = "read", "write", "sensitive"

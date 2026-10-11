@@ -151,3 +151,22 @@ def test_mcp_http_endpoint(client):
     assert called.status_code == 200 and "mrr" in called.json()["result"]["content"][0]["text"]
     denied = client.post("/mcp", headers={**headers, "Authorization": "Bearer wrong"}, json={"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {}})
     assert denied.status_code == 401
+
+
+def test_won_automation_creates_a_single_project(client):
+    company = client.post("/api/companies", json={"name": "Idempotence SAS"}).json()
+    deal = client.post("/api/deals", json={"title": "Rebond", "company_id": company["id"], "amount": 5000}).json()
+    stages = client.get("/api/deals/board").json()["stages"]
+    won = next(s for s in stages if s["is_won"])
+    first = stages[0]
+    for stage in (won, first, won):  # won, re-opened, won again
+        assert client.post(f"/api/deals/{deal['id']}/move", json={"stage_id": stage["id"], "position": 0}).status_code == 200
+    projects = client.get("/api/projects", params={"deal_id": deal["id"]}).json()
+    assert projects["total"] == 1
+
+
+def test_deleting_a_deal_detaches_its_records(client):
+    deal = client.post("/api/deals", json={"title": "Éphémère"}).json()
+    task = client.post("/api/tasks", json={"title": "Suivi", "deal_id": deal["id"]}).json()
+    assert client.delete(f"/api/deals/{deal['id']}").status_code == 200
+    assert client.get(f"/api/tasks/{task['id']}").json()["deal_id"] is None

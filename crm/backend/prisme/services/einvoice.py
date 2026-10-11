@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any
 
 from ..models import Invoice
-from .invoicing import EU_CODES
+from .invoicing import vat_exemption
 from .pdf import render_invoice
 from .settings import get_section
 from .totals import compute
@@ -67,18 +67,11 @@ def _party(snapshot: dict[str, Any], *, seller: bool) -> dict[str, Any]:
     return party
 
 
-def _vat_category(rate: float, seller: dict[str, Any], buyer: dict[str, Any]) -> tuple[str, str | None, str | None]:
+def _vat_category(rate: float, seller: dict[str, Any], buyer: dict[str, Any], nature: str | None) -> tuple[str, str | None, str | None]:
     """Return (UNTDID 5305 category, exemption reason, exemption reason code)."""
-    if seller.get("vat_regime") == "franchise":
-        return "E", "TVA non applicable, art. 293 B du CGI", "VATEX-FR-FRANCHISE"
-    if rate > 0:
+    if rate > 0 and seller.get("vat_regime") != "franchise":
         return "S", None, None
-    buyer_country = buyer.get("country_code") or "FR"
-    if buyer_country != "FR" and buyer_country in EU_CODES and buyer.get("vat_number"):
-        return "AE", "Autoliquidation", "VATEX-EU-AE"
-    if buyer_country not in EU_CODES:
-        return "G", "Exonération de TVA, art. 262 I du CGI (exportation)", "VATEX-EU-G"
-    return "Z", None, None
+    return vat_exemption(seller, buyer, nature) or ("Z", None, None)
 
 
 def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
@@ -91,7 +84,7 @@ def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
     lines = []
     factor = 1 - (invoice.discount or 0) / 100
     for idx, line in enumerate([ln for ln in result["lines"] if (ln.get("type") or "item") == "item"], start=1):
-        category, _, _ = _vat_category(line["vat_rate"], seller, buyer)
+        category, _, _ = _vat_category(line["vat_rate"], seller, buyer, invoice.nature)
         qty = line["quantity"] * sign
         net = line["total"] * sign
         unit_net_price = round(line["unit_price"] * (1 - (line.get("discount") or 0) / 100), 6)
@@ -111,7 +104,7 @@ def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
 
     breakdown = []
     for b in result["vat_breakdown"]:
-        category, reason, reason_code = _vat_category(b["rate"], seller, buyer)
+        category, reason, reason_code = _vat_category(b["rate"], seller, buyer, invoice.nature)
         item: dict[str, Any] = {
             "BT-116": b["base"] * sign,
             "BT-117": b["amount"] * sign,
@@ -130,7 +123,7 @@ def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
             if (ln.get("type") or "item") == "item":
                 lines_by_rate[ln["vat_rate"]] = lines_by_rate.get(ln["vat_rate"], 0) + ln["total"]
         for rate, base in lines_by_rate.items():
-            category, _, _ = _vat_category(rate, seller, buyer)
+            category, _, _ = _vat_category(rate, seller, buyer, invoice.nature)
             allowances.append(
                 {
                     "amount": round(base * (1 - factor), 2) * sign,
@@ -188,6 +181,10 @@ def build_data_dict(session: Any, invoice: Any) -> dict[str, Any]:
         data["BT-73"] = invoice.service_date
         data["BT-74"] = invoice.service_period_end
     data["BT-72"] = invoice.service_period_end or invoice.service_date or invoice.issue_date
+    if any(item["BT-118"] == "K" for item in breakdown):
+        # Intra-community supply: the deliver-to country is mandatory (BR-IC-12).
+        buyer_party = _party(buyer, seller=False)
+        data["BG-13"] = {k: v for k, v in buyer_party.items() if k in ("name", "country_code", "addr_l1", "city", "postcode")}
     if notes:
         data["BG-1"] = notes
     if seller.get("iban") and invoice.kind != "credit_note":

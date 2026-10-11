@@ -86,7 +86,8 @@ def summary(obj: Any) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=None)
-def _model_for_table() -> dict[str, type[SQLModel]]:
+def table_models() -> dict[str, type[SQLModel]]:
+    """Every table model, by table name."""
     from . import models  # noqa: F401
 
     mapping: dict[str, type[SQLModel]] = {}
@@ -105,7 +106,7 @@ def _collect(cls: type, mapping: dict[str, type[SQLModel]]) -> None:
 
 @lru_cache(maxsize=None)
 def fk_map(model: type[SQLModel]) -> dict[str, type[SQLModel]]:
-    tables = _model_for_table()
+    tables = table_models()
     result: dict[str, type[SQLModel]] = {}
     for column in model.__table__.columns:  # type: ignore[attr-defined]
         for fk in column.foreign_keys:

@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from ..db import session_scope
-from ..models import Automation, AutomationRun, Company, Contact, Deal, User, today, utcnow
+from ..models import Automation, AutomationRun, Company, Contact, Deal, Project, User, today, utcnow
 from ..serialize import dump
 from .events import current_depth, set_depth, subscribe
 
@@ -270,7 +270,12 @@ def run_action(session: Session, action: dict[str, Any], ctx: dict[str, Any]) ->
     if kind == "create_project":
         entity = ctx.get("entity") or {}
         name = cfg.get("name") or f"Projet — {entity.get('title') or entity.get('number') or ctx['company'].get('name') or 'nouveau client'}"
-        data = {"name": name, "billing_mode": cfg.get("billing_mode") or "fixed", "company_id": ctx["company"].get("id") if ctx.get("company") else None, "deal_id": entity.get("id") if ctx.get("entity_type") == "deal" else entity.get("deal_id"), "start_date": today().isoformat(), "budget_amount": entity.get("amount") or entity.get("subtotal") or 0}
+        deal_id = entity.get("id") if ctx.get("entity_type") == "deal" else entity.get("deal_id")
+        if deal_id:
+            existing = session.exec(select(Project).where(Project.deal_id == deal_id)).first()
+            if existing:  # a deal re-opened then won again must not spawn a second project
+                return f"Projet « {existing.name} » déjà existant pour cette opportunité"
+        data = {"name": name, "billing_mode": cfg.get("billing_mode") or "fixed", "company_id": ctx["company"].get("id") if ctx.get("company") else None, "deal_id": deal_id, "start_date": today().isoformat(), "budget_amount": entity.get("amount") or entity.get("subtotal") or 0}
         project = RESOURCES["projects"].create(session, data, user)
         return f"Projet « {project.name} » créé"
 

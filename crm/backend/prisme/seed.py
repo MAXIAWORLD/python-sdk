@@ -6,7 +6,6 @@ import random
 import re
 import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any
 
 from sqlmodel import Session, func, select
 
@@ -549,6 +548,13 @@ def seed_demo(session: Session, admin: User) -> None:
         when = utcnow() - timedelta(days=rng.randint(0, 120), hours=rng.randint(0, 9))
         deal = rng.choice([d for d in deals if d.company_id == ct.company_id] or [None])
         session.add(Activity(type=kind, subject=rng.choice(act_subjects[kind]), body=rng.choice(["Échange constructif, intérêt confirmé.", "Le client souhaite une proposition sous 10 jours.", "Points de vigilance : délais et intégration au SI existant.", "Très bon feeling, prochaine étape : démo technique.", None]), contact_id=ct.id, company_id=ct.company_id, deal_id=deal.id if deal else None, user_id=rng.choice(team).id, occurred_at=when, duration_minutes=rng.choice([15, 30, 45, 60]) if kind in ("call", "meeting") else None, outcome=rng.choice(["Joint", "Messagerie", "Pas de réponse"]) if kind == "call" else None, direction="out" if kind in ("call", "email") else None))
+    session.commit()
+    latest = session.exec(select(Activity.company_id, func.max(Activity.occurred_at)).where(Activity.company_id.isnot(None)).group_by(Activity.company_id)).all()
+    for company_id, last in latest:
+        company = session.get(Company, company_id)
+        if company:
+            company.last_activity_at = last
+            session.add(company)
     session.commit()
 
     # --- Support
