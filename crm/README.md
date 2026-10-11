@@ -10,6 +10,27 @@ Vous pouvez y brancher **n'importe quel LLM** (Claude, OpenAI, Mistral, Gemini, 
 Ollama ou LM Studio en local…) et/ou **votre abonnement Claude** : Claude Desktop et Claude Code pilotent Prisme
 via le protocole **MCP**.
 
+![Tableau de bord de Prisme en thème clair](docs/screenshots/dashboard-light.webp)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/pipeline-dark.webp" alt="Pipeline des ventes en kanban, thème sombre"></td>
+    <td><img src="docs/screenshots/invoice-light.webp" alt="Facture émise, verrouillée et chaînée, au format Factur-X"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/subscriptions-dark.webp" alt="Abonnements : MRR, churn et mouvements, thème sombre"></td>
+    <td><img src="docs/screenshots/reports-light.webp" alt="Rapports de ventes sur douze mois"></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-mobile.webp" alt="Tableau de bord sur mobile" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/inbox-mobile.webp" alt="Boîte mail sur mobile" width="260">
+</p>
+
+<sub>Captures réalisées avec les données de démonstration proposées au premier lancement.</sub>
+
 ---
 
 ## Sommaire
