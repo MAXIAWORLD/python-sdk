@@ -170,6 +170,8 @@ export default function GlassScene({ dark = true, className }: { dark?: boolean;
         <Pill dark={dark} />
         <Orb dark={dark} />
         <Environment resolution={256}>
+          {/* Reflections pick up this tint: light glass in light mode, deep glass in dark mode. */}
+          <color attach="background" args={[dark ? "#161b3d" : "#eef1ff"]} />
           <group rotation={[-Math.PI / 3, 0, 1]}>
             <Lightformer form="circle" intensity={4} position={[0, 5, -9]} scale={10} />
             <Lightformer form="circle" intensity={2} rotation-y={Math.PI / 2} position={[-5, 1, -1]} scale={3} />
