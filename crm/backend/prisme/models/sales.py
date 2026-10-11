@@ -122,7 +122,7 @@ class Quote(Base, table=True):
     vat_mention: Optional[str] = None
     seller: dict = JSONField(dict)  # snapshot of the issuer identity when sent
     buyer: dict = JSONField(dict)  # snapshot of the client identity when sent
-    invoice_id: Optional[int] = None
+    invoice_id: Optional[int] = None  # invoice created from this quote (not a FK: invoices already reference quotes)
 
 
 class Invoice(Base, table=True):

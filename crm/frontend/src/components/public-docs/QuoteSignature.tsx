@@ -11,6 +11,7 @@ import { api, ApiError } from "@/lib/api";
 import { date, money } from "@/lib/format";
 import { toastError } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { rateLabel } from "./doc-utils";
 import { CopyButton } from "./PublicBits";
 import { SignaturePad, type SignaturePadHandle } from "./SignaturePad";
 import type { AcceptResult, PublicQuoteDoc } from "./types";
@@ -82,7 +83,7 @@ export function QuoteSignForm({ quote, token, onSigned, onDecline, onConflict }:
     const signature = mode === "draw" ? (pad.current?.toDataURL() ?? null) : typedSignature(signer);
     setSending(true);
     try {
-      const res = await api.post<AcceptResult>(`/public/quotes/${token}/accept`, { name: signer, email: email.trim(), signature, agree: true });
+      const res = await api.post<AcceptResult>(`/public/quotes/${encodeURIComponent(token)}/accept`, { name: signer, email: email.trim(), signature, agree: true });
       onSigned({ ...res, name: signer, email: email.trim().toLowerCase(), signature });
     } catch (e) {
       toastError(e);
@@ -187,7 +188,7 @@ export function QuoteSignForm({ quote, token, onSigned, onDecline, onConflict }:
                   <b className="font-semibold">Bon pour accord :</b> j'accepte le devis et les conditions générales.
                   <span className="mt-0.5 block text-[12px] text-fg-3">
                     Devis {quote.number} du {date(quote.issue_date)}, d'un montant de {money(quote.total, quote.currency)} TTC
-                    {quote.deposit_percent ? `, avec un acompte de ${quote.deposit_percent} % à la commande` : ""}.
+                    {quote.deposit_percent ? `, avec un acompte de ${rateLabel(quote.deposit_percent)} à la commande` : ""}.
                   </span>
                 </span>
               }
@@ -313,7 +314,7 @@ export function DeclineDialog({ open, onOpenChange, token, number, onDone }: { o
   const submit = async () => {
     setSending(true);
     try {
-      await api.post(`/public/quotes/${token}/decline`, { reason: reason.trim() });
+      await api.post(`/public/quotes/${encodeURIComponent(token)}/decline`, { reason: reason.trim() });
       toast.success("Votre réponse a bien été transmise", { description: "Merci de nous avoir tenus informés." });
       onOpenChange(false);
       onDone();

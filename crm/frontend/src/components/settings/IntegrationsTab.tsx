@@ -1,6 +1,6 @@
 import { CalendarDays, ChevronDown, Code2, KeyRound, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, Webhook as WebhookIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button, IconButton } from "@/components/ui/button";
 import { Badge, EmptyState, Skeleton } from "@/components/ui/display";
@@ -13,7 +13,7 @@ import type { Webhook } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { can, useAuth } from "@/stores/auth";
 import { CreateTokenDialog, TokenList, useApiTokens, useCreateToken } from "./ApiTokens";
-import { Callout, CodeBlock, CopyButton, SecretReveal, SettingsCard, TabHeader } from "./shared";
+import { Callout, CodeBlock, CopyButton, FieldGroup, SecretReveal, SettingsCard, TabHeader } from "./shared";
 import { isHttpUrl } from "./validators";
 
 const EVENT_GROUPS: { label: string; events: [string, string][] }[] = [
@@ -60,6 +60,7 @@ function WebhookDialog({ open, onOpenChange, hook }: { open: boolean; onOpenChan
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<Webhook | null>(null);
   const [lastOpen, setLastOpen] = useState(false);
+  const secretId = useId();
   if (open !== lastOpen) {
     setLastOpen(open);
     if (open) {
@@ -163,8 +164,9 @@ function WebhookDialog({ open, onOpenChange, hook }: { open: boolean; onOpenChan
             )}
           </div>
           {hook && (
-            <Field
+            <FieldGroup
               label="Secret de signature"
+              htmlFor={secretId}
               action={
                 <button type="button" onClick={() => setSecret(randomSecret())} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent">
                   <RefreshCw className="size-3" /> Régénérer
@@ -173,10 +175,10 @@ function WebhookDialog({ open, onOpenChange, hook }: { open: boolean; onOpenChan
               hint={secret ? <span className="text-amber-600 dark:text-amber-400">Nouveau secret : mettez à jour votre application après l'enregistrement.</span> : "Utilisé pour signer chaque requête (HMAC-SHA256)."}
             >
               <div className="flex gap-2">
-                <Input value={secret ?? hook.secret ?? ""} readOnly className="font-mono text-[12.5px]" />
+                <Input id={secretId} value={secret ?? hook.secret ?? ""} readOnly className="font-mono text-[12.5px]" />
                 <CopyButton value={secret ?? hook.secret ?? ""} size="md" />
               </div>
-            </Field>
+            </FieldGroup>
           )}
           <Switch checked={active} onChange={setActive} label="Actif" description={hook?.failures ? `${hook.failures} échec${hook.failures > 1 ? "s" : ""} consécutif${hook.failures > 1 ? "s" : ""} : réactiver remet le compteur à zéro. Le webhook est désactivé automatiquement après 20 échecs.` : "Le webhook est désactivé automatiquement après 20 échecs consécutifs."} />
           <button type="submit" className="hidden" />

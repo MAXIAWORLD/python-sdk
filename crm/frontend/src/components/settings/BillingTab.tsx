@@ -1,8 +1,9 @@
 import { AlertTriangle, BookOpenCheck, CalendarClock, FileCheck2, FileText, Hash, Lock, Percent, RotateCcw, Scale, Send } from "lucide-react";
+import { useId, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Badge, Skeleton } from "@/components/ui/display";
-import { Field, Input, Select } from "@/components/ui/fields";
+import { Field, Input, Select, Textarea } from "@/components/ui/fields";
 import { NATURES, VAT_RATES } from "@/lib/constants";
 import { daysFromNow } from "@/lib/format";
 import { useDebounced, useList } from "@/lib/hooks";
@@ -12,12 +13,12 @@ import { can, useAuth } from "@/stores/auth";
 import {
   Callout,
   ChoiceCards,
+  FieldGroup,
   FormGrid,
   NumberField,
   ReadOnlyNotice,
   Restricted,
   SaveBar,
-  SecretField,
   SelectField,
   SettingsCard,
   SwitchField,
@@ -29,7 +30,6 @@ import {
   type SectionForm,
 } from "./shared";
 import type { AccountingSettings, BillingSettings, CompanySettings, EinvoicingSettings } from "./types";
-import { isUrl } from "./validators";
 
 const LATE_PENALTY_DEFAULT =
   "En cas de retard de paiement, application de pénalités au taux d'intérêt appliqué par la BCE à son opération de refinancement la plus récente majoré de 10 points (art. L441-10 du Code de commerce).";
@@ -46,12 +46,6 @@ function validateBilling(v: BillingSettings): FormErrors<BillingSettings> {
   if (v.payment_days < 0) e.payment_days = "Le délai ne peut pas être négatif.";
   if (v.quote_validity_days < 1 || v.quote_validity_days > 365) e.quote_validity_days = "Entre 1 et 365 jours.";
   if (v.recovery_fee < 0) e.recovery_fee = "Montant invalide.";
-  return e;
-}
-
-function validateEinvoicing(v: EinvoicingSettings): FormErrors<EinvoicingSettings> {
-  const e: FormErrors<EinvoicingSettings> = {};
-  if (v.platform_api_url && !isUrl(v.platform_api_url)) e.platform_api_url = "Adresse invalide (https://…).";
   return e;
 }
 
@@ -154,6 +148,7 @@ function NumberingCard({ form }: { form: SectionForm<BillingSettings> }) {
 
 function PaymentTermsCard({ form }: { form: SectionForm<BillingSettings> }) {
   const v = form.values;
+  const penaltyId = useId();
   const days = v.payment_days ?? 0;
   const termsWarning =
     days > 60 ? null : days > 45 ? (
@@ -173,22 +168,21 @@ function PaymentTermsCard({ form }: { form: SectionForm<BillingSettings> }) {
           <TextField form={form} name="payment_methods" label="Moyens de paiement acceptés" placeholder="Virement bancaire, carte bancaire" />
         </FormGrid>
         {termsWarning}
-        <TextareaField
-          form={form}
-          name="late_penalty_rate"
-          label={
-            <span className="flex items-center gap-2">
-              Pénalités de retard
-              {form.canEdit && v.late_penalty_rate !== LATE_PENALTY_DEFAULT && (
-                <button type="button" onClick={() => form.set("late_penalty_rate", LATE_PENALTY_DEFAULT)} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent">
-                  <RotateCcw className="size-3" /> Mention légale par défaut
-                </button>
-              )}
-            </span>
-          }
+        <FieldGroup
+          label="Pénalités de retard"
+          htmlFor={penaltyId}
           hint="Taux au moins égal à 3 fois le taux d'intérêt légal. La mention par défaut reprend le taux BCE majoré de 10 points."
-          rows={3}
-        />
+          error={form.errors.late_penalty_rate}
+          action={
+            form.canEdit && v.late_penalty_rate !== LATE_PENALTY_DEFAULT ? (
+              <button type="button" onClick={() => form.set("late_penalty_rate", LATE_PENALTY_DEFAULT)} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent">
+                <RotateCcw className="size-3" /> Mention légale par défaut
+              </button>
+            ) : undefined
+          }
+        >
+          <Textarea id={penaltyId} value={v.late_penalty_rate ?? ""} onChange={(e) => form.set("late_penalty_rate", e.target.value)} rows={3} disabled={!form.canEdit} />
+        </FieldGroup>
         <FormGrid>
           <NumberField
             form={form}
@@ -211,6 +205,8 @@ function PaymentTermsCard({ form }: { form: SectionForm<BillingSettings> }) {
           <TextField form={form} name="early_payment_discount" label="Escompte pour paiement anticipé" placeholder="Pas d'escompte pour paiement anticipé." hint="Mention obligatoire, même en l'absence d'escompte." />
         </FormGrid>
         <SwitchField form={form} name="auto_overdue" label="Passer automatiquement les factures en retard" description="Chaque heure, les factures échues et non réglées passent au statut « En retard » et apparaissent dans les relances." />
+        <SwitchField form={form} name="auto_reminders" label="Relances automatiques par email" description="Un rappel de paiement (PDF joint, mentions des pénalités) part chaque jour de retard indiqué ci-dessous. Nécessite l'envoi d'emails configuré." />
+        {v.auto_reminders && <ReminderDays form={form} />}
       </div>
     </SettingsCard>
   );
@@ -295,6 +291,21 @@ function ReformTimeline() {
   );
 }
 
+/** Days of delay that trigger each automatic reminder (e.g. 7, 15, 30). */
+function ReminderDays({ form }: { form: SectionForm<BillingSettings> }) {
+  const [draft, setDraft] = useState(() => form.values.reminder_days.join(", "));
+  const apply = (text: string) => {
+    setDraft(text);
+    const days = [...new Set(text.split(/[\s,;]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 365))].sort((a, b) => a - b);
+    form.set("reminder_days", days);
+  };
+  return (
+    <FieldGroup label="Jours de retard déclenchant une relance" hint={form.values.reminder_days.length ? `Relances à J+${form.values.reminder_days.join(", J+")} après l'échéance.` : "Indiquez au moins un nombre de jours."}>
+      <Input value={draft} onChange={(e) => apply(e.target.value)} placeholder="7, 15, 30" inputMode="numeric" disabled={!form.canEdit} className="max-w-[240px]" />
+    </FieldGroup>
+  );
+}
+
 function EinvoicingCard({ form }: { form: SectionForm<EinvoicingSettings> }) {
   if (!form.ready) return null;
   const v = form.values;
@@ -317,11 +328,8 @@ function EinvoicingCard({ form }: { form: SectionForm<EinvoicingSettings> }) {
               ]}
               hint="EN 16931 couvre toutes les mentions exigées par la réforme."
             />
-            <TextField form={form} name="platform_name" label="Plateforme agréée choisie" placeholder="Nom de votre plateforme agréée" className="sm:col-span-2" hint="Consultez la liste officielle des plateformes immatriculées publiée par l'administration fiscale." />
-            <TextField form={form} name="platform_api_url" label="URL de l'API de la plateforme" placeholder="https://api.plateforme.fr" inputMode="url" />
-            <SecretField form={form} name="platform_api_key" label="Clé API de la plateforme" hint="Chiffrée sur le serveur, jamais réaffichée." />
+            <TextField form={form} name="platform_name" label="Plateforme agréée choisie" placeholder="Nom de votre plateforme agréée" className="sm:col-span-2" hint="Consultez la liste officielle des plateformes immatriculées publiée par l'administration fiscale. Déposez-y vos factures Factur-X (export PDF ou XML depuis chaque facture)." />
           </FormGrid>
-          <SwitchField form={form} name="auto_transmit" label="Transmission automatique à l'émission" description="Déposer chaque facture émise sur votre plateforme dès que la connexion API est configurée." />
           <Callout tone="neutral" icon={<Scale className="size-4" />}>
             Prisme prépare des factures conformes (Factur-X EN 16931, nouvelles mentions : SIREN du client, adresse de livraison, nature des opérations, option sur les débits). Prisme n'est pas une plateforme agréée : vous restez responsable du dépôt de vos factures auprès de la plateforme choisie.
           </Callout>
@@ -389,7 +397,7 @@ function AccountingCard({ form }: { form: SectionForm<AccountingSettings> }) {
 export default function BillingTab() {
   const billing = useSectionForm("billing", { validate: validateBilling });
   const company = useSectionForm("company");
-  const einvoicing = useSectionForm("einvoicing", { validate: validateEinvoicing });
+  const einvoicing = useSectionForm("einvoicing");
   const accounting = useSectionForm("accounting", { validate: validateAccounting });
   const isAdmin = useAuth((s) => can(s.user, "admin"));
   if (!billing.ready) {
@@ -417,6 +425,7 @@ export default function BillingTab() {
           </FormGrid>
           <TextareaField form={billing} name="quote_terms" label="Conditions des devis" rows={3} hint="Affichées sur le devis et sur la page de signature en ligne." />
           <TextareaField form={billing} name="invoice_terms" label="Conditions générales de vente (factures)" rows={5} placeholder="Collez ici vos conditions générales ou un lien vers celles-ci." hint="Ajoutées aux nouvelles factures. Les CGV doivent être communiquées à tout client professionnel qui en fait la demande." />
+          <TextareaField form={billing} name="footer" label="Pied de page des documents" rows={2} placeholder="Ex. : Membre d'une association agréée, règlement par chèque accepté." hint="Imprimé en bas de chaque devis et facture PDF (300 caractères maximum)." />
         </div>
       </SettingsCard>
 

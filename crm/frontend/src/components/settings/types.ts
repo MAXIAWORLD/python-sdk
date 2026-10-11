@@ -46,6 +46,7 @@ export interface BillingSettings {
   invoice_terms: string;
   footer: string;
   auto_overdue: boolean;
+  auto_reminders: boolean;
   reminder_days: number[];
 }
 
@@ -90,7 +91,6 @@ export interface AiSettings {
   custom_instructions: string;
   effort: string;
   mask_personal_data: boolean;
-  daily_briefing: boolean;
 }
 
 export interface McpSettings {
@@ -126,10 +126,6 @@ export interface EinvoicingSettings {
   format: string;
   profile: string;
   platform_name: string;
-  platform_api_url: string;
-  platform_api_key: string | null;
-  platform_api_key_set?: boolean;
-  auto_transmit: boolean;
 }
 
 export interface AccountingSettings {

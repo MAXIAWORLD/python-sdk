@@ -29,6 +29,8 @@ from .services.events import emit, flush_events
 
 RESERVED_PARAMS = {"q", "limit", "offset", "sort", "expand", "fields"}
 PROTECTED_FIELDS = {"id", "created_at", "updated_at"}
+# Columns only hooks may set (hashed passwords, encrypted keys): never accepted from a client payload.
+SECRET_COLUMNS = {"password_hash", "token_hash", "api_key_enc"}
 MAX_LIMIT = 1000
 
 
@@ -58,6 +60,10 @@ class Hooks:
 
 
 LABELS: dict[type[SQLModel], str] = {}  # model -> French label, filled by Resource
+
+
+def _without_secrets(data: dict[str, Any] | None) -> dict[str, Any]:
+    return {k: v for k, v in (data or {}).items() if k not in SECRET_COLUMNS}
 
 
 def detach_references(session: Session, obj: SQLModel) -> None:
@@ -105,8 +111,9 @@ class Resource:
     def columns(self) -> dict[str, Any]:
         return {c.name: c for c in self.model.__table__.columns}  # type: ignore[attr-defined]
 
-    def writable_fields(self) -> set[str]:
-        return set(self.columns) - PROTECTED_FIELDS - set(self.readonly) - {"password_hash", "token_hash", "api_key_enc"}
+    def writable_fields(self, *, secrets: bool = False) -> set[str]:
+        fields = set(self.columns) - PROTECTED_FIELDS - set(self.readonly)
+        return fields if secrets else fields - SECRET_COLUMNS
 
     # --------------------------------------------------------------------- read
     def query(self, session: Session, params: dict[str, Any] | Iterable[tuple[str, str]], user: User | None) -> tuple[list[Any], int]:
@@ -147,8 +154,8 @@ class Resource:
         return data
 
     # -------------------------------------------------------------------- write
-    def clean(self, data: dict[str, Any]) -> dict[str, Any]:
-        allowed = self.writable_fields()
+    def clean(self, data: dict[str, Any], *, secrets: bool = False) -> dict[str, Any]:
+        allowed = self.writable_fields(secrets=secrets)
         out: dict[str, Any] = {}
         for key, value in (data or {}).items():
             if key not in allowed:
@@ -157,8 +164,8 @@ class Resource:
         return out
 
     def create(self, session: Session, data: dict[str, Any], user: User | None, *, commit: bool = True) -> Any:
-        data = self.hooks.prepare(session, dict(data or {}), None, user)
-        clean = self.clean(data)
+        data = self.hooks.prepare(session, _without_secrets(data), None, user)
+        clean = self.clean(data, secrets=True)  # secret columns can only come from the hooks
         try:
             obj = self.model.model_validate(clean)
         except ValidationError as exc:
@@ -180,8 +187,8 @@ class Resource:
 
     def update(self, session: Session, obj_id: int, data: dict[str, Any], user: User | None, *, commit: bool = True) -> Any:
         obj = self.get_obj(session, obj_id, user)
-        data = self.hooks.prepare(session, dict(data or {}), obj, user)
-        clean = self.clean(data)
+        data = self.hooks.prepare(session, _without_secrets(data), obj, user)
+        clean = self.clean(data, secrets=True)
         before = dump(obj)
         for key, value in clean.items():
             setattr(obj, key, value)

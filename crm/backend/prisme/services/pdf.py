@@ -85,7 +85,8 @@ class _Doc(FPDF):
     accent: tuple[int, int, int]
 
     def footer(self) -> None:  # noqa: D401 - fpdf hook
-        self.set_y(-24)
+        estimated_lines = sum(max(1, -(-len(line) // 150)) for line in self.footer_lines)
+        self.set_y(-max(24, 10 + 3.3 * estimated_lines))
         self.set_draw_color(*LINE)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
         self.ln(1.6)
@@ -96,6 +97,11 @@ class _Doc(FPDF):
         self.set_y(-8)
         self.set_font("Inter", "", 7)
         self.cell(0, 4, f"Page {self.page_no()}/{{nb}}", align="R")
+
+
+def _custom_footer(session: Any) -> list[str]:
+    text = " ".join((get_section(session, "billing").get("footer") or "").split())
+    return [text[:300]] if text else []
 
 
 def _new_doc(title: str, accent: tuple[int, int, int], footer_lines: list[str]) -> _Doc:
@@ -453,6 +459,7 @@ def render_invoice(session: Any, invoice: Any) -> bytes:
         footer.append(f"Médiateur de la consommation : {seller['mediator']}")
     if seller.get("insurance"):
         footer.append(f"Assurance professionnelle : {seller['insurance']}")
+    footer += _custom_footer(session)
     pdf = _new_doc(f"{label.title()} {invoice.number or ''}".strip(), accent, footer)
     pdf.set_author(seller.get("name") or "")
     pdf.set_subject(f"{label.title()} {invoice.number}")
@@ -542,6 +549,7 @@ def render_quote(session: Any, quote: Any) -> bytes:
         footer.append(f"Médiateur de la consommation : {seller['mediator']}")
     if seller.get("insurance"):
         footer.append(f"Assurance professionnelle : {seller['insurance']}")
+    footer += _custom_footer(session)
     pdf = _new_doc(f"Devis {quote.number}", accent, footer)
     pdf.set_author(seller.get("name") or "")
     pdf.set_subject(f"Devis {quote.number}")

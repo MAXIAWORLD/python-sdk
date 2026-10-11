@@ -231,8 +231,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: number | null; onClose:
   const destroy = async () => {
     if (!task) return;
     if (!(await confirm({ title: `Supprimer « ${task.title} » ?`, description: "La tâche et sa checklist seront définitivement supprimées.", danger: true, confirmLabel: "Supprimer" }))) return;
-    await remove.mutateAsync(task.id);
-    onClose();
+    remove.mutate(task.id, { onSuccess: onClose });
   };
 
   const toggleTimer = () => {
@@ -272,10 +271,10 @@ export function TaskSheet({ taskId, onClose }: { taskId: number | null; onClose:
         )
       }
     >
-      {error ? (
-        <EmptyState title="Tâche introuvable" description="Elle a peut-être été supprimée." />
-      ) : task ? (
+      {task ? (
         <TaskDetail key={task.id} task={task} />
+      ) : error ? (
+        <EmptyState title="Tâche introuvable" description="Elle a peut-être été supprimée." />
       ) : (
         <div className="space-y-4">
           <Skeleton className="h-8 w-3/4" />

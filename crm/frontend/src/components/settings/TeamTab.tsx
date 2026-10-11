@@ -1,5 +1,5 @@
 import { Check, ChevronDown, KeyRound, Minus, MoreHorizontal, Pencil, RefreshCw, ShieldCheck, UserCheck, UserPlus, Users, UserX } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { FilterChip } from "@/components/data/blocks";
 import { DataTable, type Column } from "@/components/data/DataTable";
@@ -16,7 +16,7 @@ import { toastError, useInvalidate, useList } from "@/lib/hooks";
 import type { User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { can, useAuth } from "@/stores/auth";
-import { ChoiceCards, CopyButton, PasswordStrength, ReadOnlyNotice, SettingsCard, SWATCHES, TabHeader } from "./shared";
+import { ChoiceCards, CopyButton, FieldGroup, PasswordStrength, ReadOnlyNotice, SettingsCard, SWATCHES, TabHeader } from "./shared";
 import { generatePassword, isEmail, passwordValid } from "./validators";
 
 type Role = User["role"];
@@ -87,6 +87,7 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
   const [form, setForm] = useState(() => ({ name: "", email: "", title: "", role: "member" as Role, password: generatePassword() }));
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Credentials | null>(null);
+  const passwordId = useId();
   const [lastOpen, setLastOpen] = useState(open);
   if (open !== lastOpen) {
     setLastOpen(open);
@@ -162,16 +163,17 @@ function InviteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o:
               options={ROLES.map((r) => ({ value: r.value as Role, label: r.label, description: ROLE_INFO[r.value as Role] }))}
             />
           </div>
-          <Field
+          <FieldGroup
             label="Mot de passe temporaire"
+            htmlFor={passwordId}
             action={
               <button type="button" onClick={() => setForm({ ...form, password: generatePassword() })} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent">
                 <RefreshCw className="size-3" /> Régénérer
               </button>
             }
           >
-            <Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="font-mono" spellCheck={false} autoComplete="off" />
-          </Field>
+            <Input id={passwordId} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="font-mono" spellCheck={false} autoComplete="off" />
+          </FieldGroup>
           <PasswordStrength password={form.password} />
           <button type="submit" className="hidden" />
         </form>

@@ -573,62 +573,17 @@ export const RUN_STATUS: Option[] = [
   { value: "skipped", label: "Ignorée", tone: "gray" },
 ];
 
-/** Parses the dry-run log line « [test] type : {python dict} » into a readable structure. */
+/** Parses the dry-run log line « [test] type : {JSON} » into a readable structure. */
 export function parseTestLog(line: string): { type: string; config: Record<string, string> } | null {
   const m = /^\[test\]\s+([\w.]+)\s+:\s+(\{[\s\S]*\})\s*$/.exec(line);
   if (!m) return null;
-  const config = parsePyDict(m[2]);
-  return config ? { type: m[1], config } : null;
-}
-
-function parsePyDict(src: string): Record<string, string> | null {
-  let i = 0;
-  const skip = () => {
-    while (i < src.length && /\s/.test(src[i])) i++;
-  };
-  const str = (): string | null => {
-    const quote = src[i];
-    if (quote !== "'" && quote !== '"') return null;
-    i++;
-    let out = "";
-    while (i < src.length && src[i] !== quote) {
-      if (src[i] === "\\") {
-        const next = src[i + 1];
-        out += next === "n" ? "\n" : next === "t" ? "\t" : next;
-        i += 2;
-      } else out += src[i++];
-    }
-    i++;
-    return out;
-  };
-  const scalar = (): string | null => {
-    const m = /^(-?\d+(?:\.\d+)?|None|True|False)/.exec(src.slice(i));
-    if (!m) return null;
-    i += m[0].length;
-    return m[0] === "None" ? "" : m[0] === "True" ? "oui" : m[0] === "False" ? "non" : m[0];
-  };
-  skip();
-  if (src[i] !== "{") return null;
-  i++;
-  const out: Record<string, string> = {};
-  for (;;) {
-    skip();
-    if (src[i] === "}") return out;
-    const key = str();
-    if (key === null) return null;
-    skip();
-    if (src[i] !== ":") return null;
-    i++;
-    skip();
-    const value = src[i] === "'" || src[i] === '"' ? str() : scalar();
-    if (value === null) return null;
-    out[key] = value;
-    skip();
-    if (src[i] === ",") {
-      i++;
-      continue;
-    }
-    if (src[i] === "}") return out;
+  try {
+    const raw = JSON.parse(m[2]) as Record<string, unknown>;
+    const config = Object.fromEntries(
+      Object.entries(raw).map(([key, value]) => [key, value === null || value === undefined ? "" : typeof value === "boolean" ? (value ? "oui" : "non") : typeof value === "object" ? JSON.stringify(value) : String(value)]),
+    );
+    return { type: m[1], config };
+  } catch {
     return null;
   }
 }

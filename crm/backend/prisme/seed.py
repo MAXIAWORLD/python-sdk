@@ -516,6 +516,11 @@ def seed_demo(session: Session, admin: User) -> None:
             if d.weekday() >= 5:
                 continue
             session.add(TimeEntry(user_id=rng.choice(team).id, project_id=p.id, company_id=p.company_id, date=d, minutes=rng.choice([60, 90, 120, 180, 240, 300, 420]), description=rng.choice(["Développement", "Réunion client", "Revue de code", "Tests", "Design", "Support"]), billable=rng.random() < 0.85, hourly_rate=p.hourly_rate))
+    session.flush()
+    for p in projects:
+        statuses = [st for st in session.exec(select(Task.status).where(Task.project_id == p.id)).all() if st != "cancelled"]
+        p.progress = round(100 * statuses.count("done") / len(statuses)) if statuses else 0
+        session.add(p)
     # Personal / sales tasks
     for k in range(18):
         ct = rng.choice(contacts)

@@ -6,7 +6,7 @@ import { useParams } from "react-router";
 import { Glass } from "@/components/glass/Glass";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { ContactCard, SummaryRow } from "@/components/public-docs/AsideCards";
-import { natureLabel, vatLabel } from "@/components/public-docs/doc-utils";
+import { natureLabel, rateLabel } from "@/components/public-docs/doc-utils";
 import { DocumentPaper, type DocumentPaperProps, type TotalRow } from "@/components/public-docs/DocumentPaper";
 import { DocError, DocSkeleton, StatusBanner } from "@/components/public-docs/PublicBits";
 import { DeclineDialog, QuoteSignForm, SignatureProof, type SignedProof } from "@/components/public-docs/QuoteSignature";
@@ -36,12 +36,12 @@ function validityLabel(validUntil?: string | null) {
 function quoteTotals(q: PublicQuoteDoc): TotalRow[] {
   const rows: TotalRow[] = [{ label: "Total HT", value: money(q.lines_total, q.currency) }];
   if (q.discount) {
-    rows.push({ label: `Remise globale (${vatLabel(q.discount)})`, value: `−${money(q.discount_amount, q.currency)}` });
+    rows.push({ label: `Remise globale (${rateLabel(q.discount)})`, value: `−${money(q.discount_amount, q.currency)}` });
     rows.push({ label: "Total HT net", value: money(q.subtotal, q.currency) });
   }
-  for (const v of q.vat_breakdown) rows.push({ label: `TVA ${vatLabel(v.rate)} sur ${money(v.base, q.currency)}`, value: money(v.amount, q.currency), variant: "muted" });
+  for (const v of q.vat_breakdown) rows.push({ label: `TVA ${rateLabel(v.rate)} sur ${money(v.base, q.currency)}`, value: money(v.amount, q.currency), variant: "muted" });
   rows.push({ label: "Total TTC", value: money(q.total, q.currency), variant: "strong" });
-  if (q.deposit_percent) rows.push({ label: `Acompte à la commande (${vatLabel(q.deposit_percent)})`, value: money((q.total * q.deposit_percent) / 100, q.currency), variant: "accent" });
+  if (q.deposit_percent) rows.push({ label: `Acompte à la commande (${rateLabel(q.deposit_percent)})`, value: money((q.total * q.deposit_percent) / 100, q.currency), variant: "accent" });
   return rows;
 }
 
@@ -178,7 +178,7 @@ export default function PublicQuote() {
         </Button>
       }
     >
-      <div className="space-y-5 pb-20 lg:pb-0">
+      <div className={pending ? "space-y-5 pb-20 lg:pb-0" : "space-y-5"}>
         {banner}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0 space-y-5">
@@ -199,7 +199,7 @@ export default function PublicQuote() {
               currency={quote.currency}
               totals={quoteTotals(quote)}
               logoUrl={quote.branding.logo_url}
-              mentions={[quote.seller.vat_regime === "franchise" && "TVA non applicable, art. 293 B du CGI", quote.vat_mention, quote.deposit_percent ? `Un acompte de ${vatLabel(quote.deposit_percent)} du montant TTC est demandé à la commande.` : null]}
+              mentions={[quote.seller.vat_regime === "franchise" && "TVA non applicable, art. 293 B du CGI", quote.vat_mention, quote.deposit_percent ? `Un acompte de ${rateLabel(quote.deposit_percent)} du montant TTC est demandé à la commande.` : null]}
               sections={[...(quote.notes ? [{ title: "Notes", body: quote.notes }] : []), ...(quote.terms ? [{ title: "Conditions", body: quote.terms }] : [])]}
             />
             {pending && (
@@ -233,7 +233,7 @@ export default function PublicQuote() {
               </div>
               {deposit > 0 && (
                 <div className="mt-3 rounded-[14px] bg-accent-soft px-3 py-2 text-[12.5px] text-fg-2">
-                  <b className="font-semibold text-accent tabular">{money(deposit, quote.currency)}</b> d'acompte ({vatLabel(quote.deposit_percent ?? 0)}) à la commande
+                  <b className="font-semibold text-accent tabular">{money(deposit, quote.currency)}</b> d'acompte ({rateLabel(quote.deposit_percent ?? 0)}) à la commande
                 </div>
               )}
               <dl className="mt-3 divide-y divide-[var(--hairline)]">

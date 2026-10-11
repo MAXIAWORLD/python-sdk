@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import time
 from collections import defaultdict
@@ -12,7 +13,8 @@ from fastapi.responses import Response
 from sqlmodel import Session, select
 
 from ..db import get_session
-from ..models import Activity, CampaignRecipient, Company, Contact, Form, FormSubmission, Invoice, KbArticle, Quote, utcnow
+from ..deps import authenticate_request
+from ..models import Activity, Campaign, CampaignRecipient, Company, Contact, Form, FormSubmission, Invoice, KbArticle, Quote, today, utcnow
 from ..resources import RESOURCES
 from ..serialize import dump, iso
 from ..services import einvoice, invoicing, pdf, rgpd
@@ -63,6 +65,9 @@ def _doc_payload(session: Session, doc: Quote | Invoice) -> dict[str, Any]:
     result = compute(doc.lines or [], doc.discount or 0, franchise=(seller.get("vat_regime") == "franchise"))
     data = {k: v for k, v in dump(doc).items() if k not in ("public_token", "signature_ip", "signature_user_agent", "hash", "prev_hash", "owner_id")}
     data.update(seller=seller, buyer=buyer, lines=result["lines"], vat_breakdown=result["vat_breakdown"], lines_total=result["lines_total"], discount_amount=result["discount_amount"], branding=_branding(session))
+    if isinstance(doc, Invoice) and doc.credit_for_id:
+        original = session.get(Invoice, doc.credit_for_id)
+        data["credit_for_number"] = original.number if original else None
     return data
 
 
@@ -78,10 +83,19 @@ def _quote_by_token(session: Session, token: str) -> Quote:
     return quote
 
 
+def _staff_view(request: Request, session: Session) -> bool:
+    """A team member opening the public link from the CRM must not mark the document as seen by the customer."""
+    return authenticate_request(request, session) is not None
+
+
 @router.get("/quotes/{token}")
-def view_quote(token: str, session: Session = Depends(get_session)):
+def view_quote(token: str, request: Request, session: Session = Depends(get_session)):
     quote = _quote_by_token(session, token)
-    if quote.status == "sent":
+    if quote.status in ("sent", "viewed") and quote.valid_until and quote.valid_until < today():
+        quote.status = "expired"
+        session.add(quote)
+        session.commit()
+    if quote.status == "sent" and not _staff_view(request, session):
         quote.status = "viewed"
         quote.viewed_at = utcnow()
         session.add(quote)
@@ -168,9 +182,9 @@ def _invoice_by_token(session: Session, token: str) -> Invoice:
 
 
 @router.get("/invoices/{token}")
-def view_invoice(token: str, session: Session = Depends(get_session)):
+def view_invoice(token: str, request: Request, session: Session = Depends(get_session)):
     invoice = _invoice_by_token(session, token)
-    if not invoice.viewed_at:
+    if not invoice.viewed_at and not _staff_view(request, session):
         invoice.viewed_at = utcnow()
         session.add(invoice)
         session.commit()
@@ -274,7 +288,7 @@ def submit_form(slug: str, request: Request, payload: dict = Body(...), session:
     session.commit()
     if form.create_deal:
         RESOURCES["deals"].create(session, {"title": f"{company_name or contact.full_name} — {form.name}", "contact_id": contact.id, "company_id": contact.company_id, "pipeline_id": form.pipeline_id, "stage_id": form.stage_id, "source": f"Formulaire : {form.name}", "owner_id": form.owner_id}, None)
-    emit("form.submitted", {"form_id": form.id, "form": form.name, "contact_id": contact.id, "name": contact.full_name, "email": email, "owner_id": form.owner_id})
+    emit("form.submitted", {"form_id": form.id, "form": form.name, "contact_id": contact.id, "name": contact.full_name, "email": email, "owner_id": form.owner_id, "notify": form.notify})
     return {"ok": True, "message": form.success_message, "redirect_url": form.redirect_url}
 
 
@@ -294,6 +308,11 @@ def unsubscribe(token: str, request: Request, session: Session = Depends(get_ses
     recipient = session.exec(select(CampaignRecipient).where(CampaignRecipient.token == token)).first()
     if recipient is None:
         raise HTTPException(404, "Lien de désinscription invalide.")
+    if recipient.status != "unsubscribed":
+        campaign = session.get(Campaign, recipient.campaign_id)
+        if campaign is not None:
+            campaign.stats = {**(campaign.stats or {}), "unsubscribed": int((campaign.stats or {}).get("unsubscribed", 0)) + 1}
+            session.add(campaign)
     recipient.status = "unsubscribed"
     session.add(recipient)
     contact = session.get(Contact, recipient.contact_id) if recipient.contact_id else None
@@ -305,6 +324,26 @@ def unsubscribe(token: str, request: Request, session: Session = Depends(get_ses
         rgpd.log_consent(session, contact, "withdrawn", source="unsubscribe", ip=ip, user_agent=(request.headers.get("user-agent") or "")[:300])
     session.commit()
     return {"ok": True}
+
+
+_PIXEL = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+
+
+@router.get("/o/{token}.gif", include_in_schema=False)
+def open_pixel(token: str, session: Session = Depends(get_session)):
+    """Email open tracking (only when enabled in Paramètres › Email); always answers a transparent pixel."""
+    recipient = session.exec(select(CampaignRecipient).where(CampaignRecipient.token == token)).first()
+    if recipient is not None and recipient.opened_at is None and get_section(session, "email").get("track_opens"):
+        recipient.opened_at = utcnow()
+        if recipient.status == "sent":
+            recipient.status = "opened"
+        session.add(recipient)
+        campaign = session.get(Campaign, recipient.campaign_id)
+        if campaign is not None:
+            campaign.stats = {**(campaign.stats or {}), "opened": int((campaign.stats or {}).get("opened", 0)) + 1}
+            session.add(campaign)
+        session.commit()
+    return Response(_PIXEL, media_type="image/gif", headers={"Cache-Control": "no-store, max-age=0"})
 
 
 def _mask_email(email: str | None) -> str | None:
@@ -320,12 +359,13 @@ def _mask_email(email: str | None) -> str | None:
 
 
 @router.get("/kb")
-def public_kb(q: str | None = None, session: Session = Depends(get_session)):
+def public_kb(q: str | None = None, sort: str | None = None, session: Session = Depends(get_session)):
     stmt = select(KbArticle).where(KbArticle.status == "published")
     if q:
         stmt = stmt.where(KbArticle.title.ilike(f"%{q}%") | KbArticle.body.ilike(f"%{q}%"))
-    rows = session.exec(stmt.order_by(KbArticle.category, KbArticle.title)).all()
-    return {"items": [{"slug": a.slug, "title": a.title, "category": a.category, "summary": a.summary} for a in rows], "branding": _branding(session)}
+    order = (KbArticle.views.desc(), KbArticle.title) if sort == "popular" else (KbArticle.category, KbArticle.title)
+    rows = session.exec(stmt.order_by(*order)).all()
+    return {"items": [{"slug": a.slug, "title": a.title, "category": a.category, "summary": a.summary, "views": a.views or 0, "helpful": a.helpful or 0} for a in rows], "branding": _branding(session)}
 
 
 @router.get("/kb/{slug}")
@@ -336,4 +376,18 @@ def public_kb_article(slug: str, session: Session = Depends(get_session)):
     article.views = (article.views or 0) + 1
     session.add(article)
     session.commit()
-    return {"title": article.title, "category": article.category, "body": article.body, "updated_at": iso(article.updated_at), "branding": _branding(session)}
+    return {"title": article.title, "category": article.category, "body": article.body, "updated_at": iso(article.updated_at), "views": article.views, "helpful": article.helpful or 0, "branding": _branding(session)}
+
+
+@router.post("/kb/{slug}/helpful")
+def public_kb_helpful(slug: str, request: Request, payload: dict = Body(default={}), session: Session = Depends(get_session)):
+    """Anonymous "Was this article helpful?" vote (only positive votes are counted)."""
+    _throttle(request, f"kb-helpful:{slug}", limit=3, window=3600)
+    article = session.exec(select(KbArticle).where(KbArticle.slug == slug, KbArticle.status == "published")).first()
+    if article is None:
+        raise HTTPException(404, "Article introuvable.")
+    if payload.get("helpful", True):
+        article.helpful = (article.helpful or 0) + 1
+        session.add(article)
+        session.commit()
+    return {"ok": True, "helpful": article.helpful or 0}

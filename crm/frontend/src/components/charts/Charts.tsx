@@ -192,7 +192,7 @@ export function BarList({ items, format = (v: number) => number(v), max, classNa
             <span className="shrink-0 font-semibold tabular">{format(it.value)}</span>
           </div>
           <div className="h-[7px] overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/[0.07]">
-            <motion.div initial={{ width: 0 }} whileInView={{ width: `${(it.value / top) * 100}%` }} viewport={{ once: true }} transition={{ type: "spring", stiffness: 90, damping: 18, delay: i * 0.04 }} className="h-full rounded-full" style={{ background: t.accent }} />
+            <motion.div initial={{ width: 0 }} animate={{ width: `${(it.value / top) * 100}%` }} transition={{ type: "spring", stiffness: 90, damping: 18, delay: i * 0.04 }} className="h-full rounded-full" style={{ background: t.accent }} />
           </div>
           {it.sub && <div className="mt-0.5 text-[11.5px] text-fg-3">{it.sub}</div>}
         </button>

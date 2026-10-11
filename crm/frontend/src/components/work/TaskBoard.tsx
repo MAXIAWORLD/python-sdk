@@ -17,7 +17,6 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { CheckCircle2, Plus } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
-import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/display";
 import { api } from "@/lib/api";
@@ -237,8 +236,7 @@ export function TaskBoard({ tasks, loading, onOpen, createDefaults, showProject 
           <BoardColumn key={s} status={s} tasks={columns[s] ?? []} showProject={showProject} onOpen={onOpen} onAdd={addTask} />
         ))}
       </div>
-      {/* Portalled: the page wrapper keeps a CSS filter, which would offset a fixed overlay (and its collision rect). */}
-      {createPortal(<DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" }}>{active ? <TaskCard task={active} showProject={showProject} overlay /> : null}</DragOverlay>, document.body)}
+      <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" }}>{active ? <TaskCard task={active} showProject={showProject} overlay /> : null}</DragOverlay>
     </DndContext>
   );
 }

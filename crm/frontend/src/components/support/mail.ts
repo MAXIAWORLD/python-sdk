@@ -85,9 +85,9 @@ export function textToMarkdown(text: string) {
 /** Fixed-width email tables (width="600") become fluid so they fit the reading pane. */
 function fluidTables(html: string) {
   return html.replace(/<table\b[^>]*>/gi, (tag) => {
-    const width = tag.match(/\swidth=["']?(\d{3,4})["']?/i);
+    const width = tag.match(/\swidth=(["']?)(\d{3,4})\1(?=[\s/>])/i);
     if (!width) return tag;
-    const fluid = `width:100%!important;max-width:${width[1]}px!important;`;
+    const fluid = `width:100%!important;max-width:${width[2]}px!important;`;
     const rest = tag.replace(width[0], "");
     return /\sstyle=["']/i.test(rest) ? rest.replace(/\sstyle=(["'])/i, (_m, quote: string) => ` style=${quote}${fluid}`) : rest.replace(/^<table/i, `<table style="${fluid}"`);
   });

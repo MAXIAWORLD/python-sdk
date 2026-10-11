@@ -81,6 +81,10 @@ def _footer(session: Session, link: str) -> str:
     )
 
 
+def _open_pixel(base: str, token: str) -> str:
+    return f'<img src="{base}/api/public/o/{token}.gif" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">'
+
+
 def send_campaign_now(session: Session, campaign: Campaign, user: User | None) -> dict[str, Any]:
     if campaign.status in ("sending", "sent"):
         raise HTTPException(409, "Campagne déjà envoyée.")
@@ -91,6 +95,7 @@ def send_campaign_now(session: Session, campaign: Campaign, user: User | None) -
     session.add(campaign)
     session.commit()
     base = public_url(session)
+    track_opens = bool(get_section(session, "email").get("track_opens"))  # opt-in by an admin (CNIL: consent required)
     sent = failed = 0
     for contact in allowed:
         recipient = CampaignRecipient(campaign_id=campaign.id, contact_id=contact.id, email=contact.email or "")
@@ -105,8 +110,10 @@ def send_campaign_now(session: Session, campaign: Campaign, user: User | None) -
                 subject=subject or campaign.name,
                 body=body,
                 preheader=campaign.preheader,
-                footer_extra=_footer(session, link),
+                footer_extra=_footer(session, link) + (_open_pixel(base, recipient.token) if track_opens else ""),
                 headers={"List-Unsubscribe": f"<{link}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
+                sender_name=campaign.from_name,
+                sender_email=campaign.from_email,
                 contact_id=contact.id,
                 company_id=contact.company_id,
                 log_activity=True,
@@ -150,7 +157,7 @@ def test_campaign(campaign_id: int, payload: dict = Body(default={}), session: S
         raise HTTPException(404, "Campagne introuvable.")
     fake = Contact(first_name=user.name.split(" ")[0], last_name=" ".join(user.name.split(" ")[1:]), email=payload.get("to") or user.email)
     subject, body = _personalize(campaign, fake)
-    mailer.send_email(session, to=[payload.get("to") or user.email], subject=f"[TEST] {subject}", body=body, preheader=campaign.preheader, footer_extra=_footer(session, f"{public_url(session)}/u/test"), log_activity=False)
+    mailer.send_email(session, to=[payload.get("to") or user.email], subject=f"[TEST] {subject}", body=body, preheader=campaign.preheader, footer_extra=_footer(session, f"{public_url(session)}/u/test"), log_activity=False, sender_name=campaign.from_name, sender_email=campaign.from_email)
     return {"ok": True}
 
 

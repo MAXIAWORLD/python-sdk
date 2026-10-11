@@ -96,6 +96,8 @@ def send_email(
     raw_html: bool = False,
     log_activity: bool = True,
     commit: bool = True,
+    sender_name: str | None = None,
+    sender_email: str | None = None,
 ) -> EmailMessage:
     cfg = get_section(session, "email")
     recipients = [addr.strip() for addr in to if addr and addr.strip()]
@@ -103,8 +105,8 @@ def send_email(
         raise HTTPException(422, "Aucun destinataire.")
     if not smtp_ready(session):
         raise HTTPException(409, "L'envoi d'emails n'est pas configuré (Paramètres › Emails › SMTP).")
-    from_email = cfg.get("from_email") or cfg.get("smtp_user")
-    from_name = cfg.get("from_name") or get_section(session, "company").get("name") or "Prisme"
+    from_email = sender_email or cfg.get("from_email") or cfg.get("smtp_user")
+    from_name = sender_name or cfg.get("from_name") or get_section(session, "company").get("name") or "Prisme"
     if user and user.signature and not raw_html:
         body = f"{body}\n\n{user.signature}"
     body_html = body if raw_html else layout(session, to_html(body), preheader=preheader, footer_extra=footer_extra)

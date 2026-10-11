@@ -16,7 +16,7 @@ export interface TicketStats {
   unresolved: number;
   toHandle: number;
   breached: number;
-  /** Ids of the tickets past their SLA (the API cannot filter on dates, see report). */
+  /** Ids of the tickets past their SLA, computed with the same clock as the live countdowns. */
   breachedIds: number[];
   pending: number;
   firstResponseHours: number | null;
@@ -36,7 +36,7 @@ export function useTicketStats(now: number): TicketStats {
   const unresolved = useList<Ticket>("tickets", { status__in: UNRESOLVED, limit: 1, expand: 0 });
   const waiting = useList<Ticket>("tickets", { status__in: "new,open", limit: 1000, expand: 0, sort: "sla_due_at" });
   const pending = useList<Ticket>("tickets", { status: "pending", limit: 1, expand: 0 });
-  // Date filters (created_at__gte) currently fail server-side: take the latest tickets and keep the window here.
+  // One cached query (no time-dependent key): the 90-day window is applied below on the latest tickets.
   const recent = useList<Ticket>("tickets", { limit: 1000, expand: 0, sort: "-created_at" });
 
   const sample = useMemo(() => {

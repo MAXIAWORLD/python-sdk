@@ -5,7 +5,7 @@ import { useParams } from "react-router";
 import { Glass } from "@/components/glass/Glass";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { ContactCard, LatePaymentNotice, PaymentDetails, SummaryRow } from "@/components/public-docs/AsideCards";
-import { natureLabel, vatLabel } from "@/components/public-docs/doc-utils";
+import { natureLabel, rateLabel } from "@/components/public-docs/doc-utils";
 import { DocumentPaper, type DocumentPaperProps, type TotalRow } from "@/components/public-docs/DocumentPaper";
 import { DocError, DocSkeleton, StatusBanner } from "@/components/public-docs/PublicBits";
 import type { PublicInvoiceDoc } from "@/components/public-docs/types";
@@ -31,10 +31,10 @@ function invoiceTotals(doc: PublicInvoiceDoc, state: InvoiceState): TotalRow[] {
   const c = doc.currency;
   const rows: TotalRow[] = [{ label: "Total HT", value: money(doc.lines_total, c) }];
   if (doc.discount) {
-    rows.push({ label: `Remise globale (${vatLabel(doc.discount)})`, value: `−${money(doc.discount_amount, c)}` });
+    rows.push({ label: `Remise globale (${rateLabel(doc.discount)})`, value: `−${money(doc.discount_amount, c)}` });
     rows.push({ label: "Total HT net", value: money(doc.subtotal, c) });
   }
-  for (const v of doc.vat_breakdown) rows.push({ label: `TVA ${vatLabel(v.rate)} sur ${money(v.base, c)}`, value: money(v.amount, c), variant: "muted" });
+  for (const v of doc.vat_breakdown) rows.push({ label: `TVA ${rateLabel(v.rate)} sur ${money(v.base, c)}`, value: money(v.amount, c), variant: "muted" });
   rows.push({ label: state === "credit" ? "Total TTC de l'avoir" : "Total TTC", value: money(doc.total, c), variant: "strong" });
   if (state === "credit") return rows;
   if (doc.amount_paid > 0) rows.push({ label: "Déjà réglé", value: `−${money(doc.amount_paid, c)}` });
@@ -102,7 +102,7 @@ export default function PublicInvoice() {
     ),
     paid: <StatusBanner tone="green" icon={<CircleCheck className="size-[18px]" />} title="Facture réglée — merci !" description={`Paiement reçu${doc.paid_at ? ` le ${date(doc.paid_at, "d MMMM yyyy")}` : ""}. Aucune action n'est requise de votre part.`} />,
     cancelled: <StatusBanner tone="gray" icon={<Ban className="size-[18px]" />} title="Facture annulée" description="Cette facture a été annulée par un avoir : aucun paiement n'est attendu." />,
-    credit: <StatusBanner tone="violet" icon={<ReceiptText className="size-[18px]" />} title={`Avoir de ${money(doc.total, c)}`} description="Ce montant vient en déduction de vos prochaines factures ou vous est remboursé." />,
+    credit: <StatusBanner tone="violet" icon={<ReceiptText className="size-[18px]" />} title={`Avoir de ${money(Math.abs(doc.total), c)} en votre faveur`} description="Ce montant vient en déduction de vos prochaines factures ou vous est remboursé." />,
   }[state];
 
   const settlement = [
@@ -163,7 +163,7 @@ export default function PublicInvoice() {
           <aside className="order-first space-y-4 lg:order-none">
             <Glass radius="xl" glow className="p-5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[12.5px] font-medium text-fg-3">{state === "credit" ? "Montant de l'avoir" : state === "paid" ? "Montant réglé" : state === "cancelled" ? "Montant annulé" : "Reste à payer"}</span>
+                <span className="text-[12.5px] font-medium text-fg-3">{state === "credit" ? "Montant de l'avoir (en votre faveur)" : state === "paid" ? "Montant réglé" : state === "cancelled" ? "Montant annulé" : "Reste à payer"}</span>
                 {state === "paid" && (
                   <Badge tone="green" dot>
                     Payée
@@ -180,7 +180,7 @@ export default function PublicInvoice() {
                   </Badge>
                 )}
               </div>
-              <div className="mt-1 text-[34px] font-semibold leading-tight tracking-[-0.035em] tabular">{money(payable ? doc.balance_due : doc.total, c)}</div>
+              <div className="mt-1 text-[34px] font-semibold leading-tight tracking-[-0.035em] tabular">{money(payable ? doc.balance_due : state === "credit" ? Math.abs(doc.total) : doc.total, c)}</div>
               <div className="text-[12.5px] text-fg-3 tabular">
                 Total {money(doc.total, c)} TTC{doc.amount_paid > 0 && state !== "paid" ? ` · déjà réglé ${money(doc.amount_paid, c)}` : ""}
               </div>

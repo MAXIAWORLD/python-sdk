@@ -1,5 +1,4 @@
 import { CheckCircle2, Circle, MapPin, Video } from "lucide-react";
-import type { ReactNode } from "react";
 import { Avatar } from "@/components/ui/display";
 import { time } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -8,6 +7,11 @@ import { eventColor, PRIORITY_COLOR, tint } from "./work-utils";
 
 export function itemColor(item: CalendarItem) {
   return item.kind === "event" ? eventColor(item.event) : PRIORITY_COLOR[item.task.priority] ?? "#8e8e93";
+}
+
+/** Done tasks and cancelled events are shown struck through. */
+export function isStruck(item: CalendarItem) {
+  return item.kind === "task" ? item.task.status === "done" : item.event.status === "cancelled";
 }
 
 export function itemTitle(item: CalendarItem) {
@@ -25,6 +29,7 @@ export function itemWhen(item: CalendarItem) {
 export function ItemChip({ item, onOpen, compact = false }: { item: CalendarItem; onOpen: (item: CalendarItem) => void; compact?: boolean }) {
   const color = itemColor(item);
   const done = item.kind === "task" && item.task.status === "done";
+  const struck = isStruck(item);
   return (
     <button
       type="button"
@@ -42,13 +47,13 @@ export function ItemChip({ item, onOpen, compact = false }: { item: CalendarItem
         <span className="size-[7px] shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${tint(color, 70)}` }} />
       )}
       {item.kind === "event" && !item.allDay && !compact && <span className="shrink-0 tabular text-fg-3">{time(item.start)}</span>}
-      <span className={cn("min-w-0 truncate font-medium text-fg group-hover:text-fg", done && "text-fg-3 line-through")}>{itemTitle(item)}</span>
+      <span className={cn("min-w-0 truncate font-medium text-fg group-hover:text-fg", struck && "text-fg-3 line-through")}>{itemTitle(item)}</span>
     </button>
   );
 }
 
 /** Row used by the agenda list and the "+N" day popover. */
-export function ItemRow({ item, onOpen, right }: { item: CalendarItem; onOpen: (item: CalendarItem) => void; right?: ReactNode }) {
+export function ItemRow({ item, onOpen, showOwner = true }: { item: CalendarItem; onOpen: (item: CalendarItem) => void; showOwner?: boolean }) {
   const color = itemColor(item);
   const ev = item.kind === "event" ? item.event : null;
   const meta = ev ? [ev.contact?.name, ev.company?.name].filter(Boolean).join(" · ") : [item.kind === "task" ? item.task.project?.name : null, item.kind === "task" ? (item.task.contact?.name ?? item.task.company?.name) : null].filter(Boolean).join(" · ");
@@ -57,7 +62,7 @@ export function ItemRow({ item, onOpen, right }: { item: CalendarItem; onOpen: (
       <span className="w-[92px] shrink-0 pt-0.5 text-[12px] font-medium tabular text-fg-2">{itemWhen(item)}</span>
       <span className="w-[3px] shrink-0 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${tint(color, 60)}` }} />
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate text-[13.5px] font-medium", item.kind === "task" && item.task.status === "done" && "text-fg-3 line-through")}>
+        <span className={cn("block truncate text-[13.5px] font-medium", isStruck(item) && "text-fg-3 line-through")}>
           {item.kind === "task" && <span className="mr-1 text-fg-3">Tâche ·</span>}
           {itemTitle(item)}
         </span>
@@ -76,7 +81,7 @@ export function ItemRow({ item, onOpen, right }: { item: CalendarItem; onOpen: (
           {meta && <span className="truncate">{(ev?.meeting_url || ev?.location ? "· " : "") + meta}</span>}
         </span>
       </span>
-      {right ?? (ev?.user ? <Avatar name={ev.user.name} color={(ev.user.color as string) ?? undefined} size={24} className="self-center" /> : null)}
+      {showOwner && ev?.user && <Avatar name={ev.user.name} color={(ev.user.color as string) ?? undefined} size={24} className="self-center" />}
     </button>
   );
 }

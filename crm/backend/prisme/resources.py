@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import secrets
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -317,12 +317,21 @@ class InvoiceHooks(Hooks):
     def before_delete(self, session, obj, user):
         if obj.locked:
             raise HTTPException(409, "Une facture émise ne peut pas être supprimée (conservation légale). Émettez un avoir.")
+        # Deleting a draft created from a quote makes the quote billable again.
+        for quote in session.exec(select(Quote).where(Quote.invoice_id == obj.id)).all():
+            quote.invoice_id = None
+            if quote.status == "invoiced":
+                quote.status = "accepted"
+            session.add(quote)
 
 
 class SubscriptionHooks(Hooks):
     def prepare(self, session, data, obj, user):
         if data.get("status") == "canceled" and not data.get("canceled_at") and not (obj and obj.canceled_at):
             data["canceled_at"] = today().isoformat()
+        if data.get("status") == "canceled" and data.get("canceled_at") and date.fromisoformat(str(data["canceled_at"])[:10]) > today():
+            # Cancellation at a future date: the subscription keeps running (and billing) until then; the scheduler ends it.
+            data["status"] = obj.status if obj and obj.status != "canceled" else "active"
         if data.get("status") in ("active", "trialing") and obj and obj.status == "canceled":
             data["canceled_at"] = None
         if obj is None and user and not data.get("owner_id"):
@@ -345,7 +354,7 @@ class SubscriptionHooks(Hooks):
         before = session.info.get("mrr_before", {}).pop(id(obj), None)
         if before is None:
             return
-        record_mrr_change(session, obj, before, obj.mrr)
+        record_mrr_change(session, obj, before, obj.mrr, previous_status=(changes.get("status") or [None])[0])
 
 
 def _mrr_from_changes(obj: Subscription, changes: dict[str, Any]) -> float | None:
@@ -400,6 +409,23 @@ class TaskHooks(Hooks):
         if "status" in changes and obj.status == "done" and not created:
             session.add(Activity(type="task", subject=f"Tâche terminée : {obj.title}", contact_id=obj.contact_id, company_id=obj.company_id, deal_id=obj.deal_id, project_id=obj.project_id, user_id=_uid(user)))
             queue_event(session, "task.completed", {"id": obj.id, "title": obj.title, "project_id": obj.project_id, "deal_id": obj.deal_id}, _uid(user))
+        if created or {"status", "project_id"} & set(changes):
+            session.flush()
+            for project_id in {obj.project_id, (changes.get("project_id") or [None])[0]}:
+                _refresh_progress(session, project_id)
+
+    def after_delete(self, session, data, user):
+        _refresh_progress(session, data.get("project_id"))
+
+
+def _refresh_progress(session: Session, project_id: int | None) -> None:
+    """Project progress = share of its tasks that are done (cancelled tasks are ignored)."""
+    project = session.get(Project, project_id) if project_id else None
+    if project is None:
+        return
+    statuses = session.exec(select(Task.status).where(Task.project_id == project.id, Task.status != "cancelled")).all()
+    project.progress = round(100 * sum(1 for s in statuses if s == "done") / len(statuses)) if statuses else 0
+    session.add(project)
 
 
 class TimeEntryHooks(Hooks):
@@ -463,7 +489,8 @@ class TicketHooks(Hooks):
     def after_save(self, session, obj, changes, created, user):
         if created:
             if obj.description:
-                session.add(TicketMessage(ticket_id=obj.id, author_type="customer", author_name=None, body=obj.description))
+                requester = session.get(Contact, obj.contact_id) if obj.contact_id else None
+                session.add(TicketMessage(ticket_id=obj.id, author_type="customer", author_name=requester.full_name if requester else None, body=obj.description))
             queue_event(session, "ticket.created_detail", {"id": obj.id, "subject": obj.subject, "priority": obj.priority, "company_id": obj.company_id}, _uid(user))
         elif "status" in changes and obj.status in ("resolved", "closed"):
             session.add(Activity(type="ticket", subject=f"Ticket {obj.number} résolu", ticket_id=obj.id, company_id=obj.company_id, contact_id=obj.contact_id, user_id=_uid(user)))
@@ -590,6 +617,12 @@ class UserHooks(Hooks):
                 raise HTTPException(409, "Un utilisateur utilise déjà cet email.")
         if obj is not None and user is not None and obj.id == user.id and data.get("role") and data["role"] != obj.role:
             raise HTTPException(409, "Vous ne pouvez pas modifier votre propre rôle.")
+        if obj is not None and user is not None and obj.id == user.id and data.get("is_active") is False:
+            raise HTTPException(409, "Vous ne pouvez pas désactiver votre propre compte.")
+        if obj is not None and obj.role == "admin" and obj.is_active and data.get("is_active") is False:
+            admins = session.exec(select(func.count()).select_from(User).where(User.role == "admin", User.is_active == True)).one()  # noqa: E712
+            if admins <= 1:
+                raise HTTPException(409, "Il doit rester au moins un administrateur actif.")
         if obj is not None and obj.role == "admin" and data.get("role") not in (None, "admin"):
             admins = session.exec(select(func.count()).select_from(User).where(User.role == "admin", User.is_active == True)).one()  # noqa: E712
             if admins <= 1:

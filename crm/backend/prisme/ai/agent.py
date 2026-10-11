@@ -38,10 +38,16 @@ class AgentError(Exception):
 # ---------------------------------------------------------------------------
 
 
+KEYLESS_KINDS = {"ollama", "lmstudio", "custom"}  # local or self-hosted servers may not need a key
+
+
+def usable(provider: AIProvider) -> bool:
+    return provider.enabled and (provider.kind in KEYLESS_KINDS or bool(provider.api_key_enc))
+
+
 def default_provider(session: Session) -> AIProvider | None:
-    return session.exec(
-        select(AIProvider).where(AIProvider.enabled == True).order_by(AIProvider.is_default.desc(), AIProvider.id)  # noqa: E712
-    ).first()
+    rows = session.exec(select(AIProvider).where(AIProvider.enabled == True).order_by(AIProvider.is_default.desc(), AIProvider.id)).all()  # noqa: E712
+    return next((p for p in rows if usable(p)), None)
 
 
 def _history(session: Session, conv_id: int) -> list[dict[str, Any]]:
@@ -331,7 +337,8 @@ def _settle_pending(conv_id: int, user_id: int, decisions: dict[str, bool] | Non
 # Background agent (automations) and one-shot generations
 # ---------------------------------------------------------------------------
 
-BACKGROUND_BLOCKED = {"delete_record", "issue_invoice", "record_payment"}
+# Unattended runs (automations) never send emails or touch money/records irreversibly: a human must review those.
+BACKGROUND_BLOCKED = {"delete_record", "issue_invoice", "record_payment", "send_email"}
 
 
 def run_background_agent(session: Session, user: User | None, instructions: str, context: dict[str, Any]) -> str:

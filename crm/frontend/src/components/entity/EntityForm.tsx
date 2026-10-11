@@ -20,24 +20,24 @@ function toLocalInput(value: unknown) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function FieldControl({ field, value, onChange, initialLabel }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void; initialLabel?: string | null }) {
+export function FieldControl({ field, value, onChange, initialLabel, id }: { field: FieldDef; value: unknown; onChange: (v: unknown) => void; initialLabel?: string | null; id?: string }) {
   switch (field.type) {
     case "textarea":
-      return <Textarea value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} rows={field.name === "body" ? 10 : 4} />;
+      return <Textarea id={id} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} rows={field.name === "body" ? 10 : 4} />;
     case "number":
-      return <NumberInput value={value as number} onChange={onChange} placeholder={field.placeholder} />;
+      return <NumberInput id={id} value={value as number} onChange={onChange} placeholder={field.placeholder} />;
     case "money":
-      return <NumberInput value={value as number} onChange={onChange} suffix="€" placeholder="0,00" />;
+      return <NumberInput id={id} value={value as number} onChange={onChange} suffix="€" placeholder="0,00" />;
     case "percent":
-      return <NumberInput value={value as number} onChange={onChange} suffix="%" />;
+      return <NumberInput id={id} value={value as number} onChange={onChange} suffix="%" />;
     case "date":
-      return <Input type="date" value={((value as string) ?? "").slice(0, 10)} onChange={(e) => onChange(e.target.value || null)} />;
+      return <Input id={id} type="date" value={((value as string) ?? "").slice(0, 10)} onChange={(e) => onChange(e.target.value || null)} />;
     case "time":
-      return <Input type="time" value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+      return <Input id={id} type="time" value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
     case "datetime":
-      return <Input type="datetime-local" value={toLocalInput(value)} onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : null)} />;
+      return <Input id={id} type="datetime-local" value={toLocalInput(value)} onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : null)} />;
     case "select":
-      return <Select options={field.options ?? []} value={value === null || value === undefined ? "" : String(value)} onChange={(v) => onChange(v || null)} placeholder="—" />;
+      return <Select id={id} options={field.options ?? []} value={value === null || value === undefined ? "" : String(value)} onChange={(v) => onChange(v || null)} placeholder="—" />;
     case "entity":
       return <EntitySelect resource={field.resource!} value={(value as number) ?? null} onChange={(id) => onChange(id)} initialLabel={initialLabel} params={field.entityParams} />;
     case "tags":
@@ -57,7 +57,7 @@ export function FieldControl({ field, value, onChange, initialLabel }: { field: 
         </div>
       );
     default:
-      return <Input type={field.type} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
+      return <Input id={id} type={field.type} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
   }
 }
 
@@ -144,6 +144,8 @@ export function RecordDialog({
   if (open && key !== lastKey) {
     setLastKey(key);
     setValues({ ...defaultsFor(resource), ...(initial ?? {}) });
+  } else if (!open && lastKey) {
+    setLastKey("");
   }
   const create = useCreate<{ id: number } & Values>(resource);
   const update = useUpdate<{ id: number } & Values>(resource);

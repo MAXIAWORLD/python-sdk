@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BadgeCheck, Building2, Calculator, CheckCircle2, CircleDashed, Fingerprint, ImageUp, Landmark, MapPin, ScrollText, Sparkles, Trash2, XCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 import { LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { toastError } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/stores/auth";
-import { ColorPicker, FormGrid, isHexColor, ReadOnlyNotice, SaveBar, SETTINGS_KEY, SettingsCard, TabHeader, TextField, useHashScroll, useSectionForm, type FormErrors } from "./shared";
+import { ColorPicker, FieldGroup, FormGrid, isHexColor, ReadOnlyNotice, SaveBar, SETTINGS_KEY, SettingsCard, TabHeader, TextField, useHashScroll, useSectionForm, type FormErrors } from "./shared";
 import { COMMERCIAL_FORMS, readiness } from "./readiness";
 import type { BrandingSettings, CompanySettings } from "./types";
 import { checkVat, compact, formatIban, formatSiren, isApe, isEmail, isUrl, isValidBic, isValidIban, isValidSiren, isValidSiret, onlyDigits, vatFromSiren } from "./validators";
@@ -303,6 +303,7 @@ export default function CompanyTab() {
   );
 
   useHashScroll(company.ready);
+  const vatId = useId();
 
   const vatCheck = checkVat(c.vat_number || "", c.siren);
   const franchise = c.vat_regime === "franchise";
@@ -345,8 +346,9 @@ export default function CompanyTab() {
             hint={isValidSiren(c.siren || "") ? <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><BadgeCheck className="size-3.5" />SIREN valide · {formatSiren(c.siren)}</span> : "9 chiffres, figurant sur votre Kbis ou avis INSEE."}
           />
           <TextField form={company} name="siret" label="SIRET du siège" placeholder="123 456 789 00012" inputMode="numeric" maxLength={14} normalize={(v) => onlyDigits(v).slice(0, 14)} hint="14 chiffres : SIREN + NIC de l'établissement." />
-          <Field
+          <FieldGroup
             label="N° de TVA intracommunautaire"
+            htmlFor={vatId}
             className="sm:col-span-2"
             error={company.errors.vat_number}
             hint={
@@ -366,8 +368,8 @@ export default function CompanyTab() {
               ) : undefined
             }
           >
-            <Input value={c.vat_number ?? ""} onChange={(e) => company.set("vat_number", compact(e.target.value))} placeholder="FR12 123456789" disabled={!company.canEdit} maxLength={15} aria-invalid={!!company.errors.vat_number} />
-          </Field>
+            <Input id={vatId} value={c.vat_number ?? ""} onChange={(e) => company.set("vat_number", compact(e.target.value))} placeholder="FR12 123456789" disabled={!company.canEdit} maxLength={15} aria-invalid={!!company.errors.vat_number} />
+          </FieldGroup>
         </FormGrid>
       </SettingsCard>
 
@@ -424,9 +426,9 @@ export default function CompanyTab() {
             <LogoUploader logoUrl={branding.values.logo_url || c.logo_url} canEdit={branding.canEdit} />
             <FormGrid>
               <TextField form={branding} name="app_name" label="Nom de l'application" placeholder="Prisme" maxLength={40} hint="Affiché dans le menu, l'onglet du navigateur et les emails." />
-              <Field label="Couleur d'accent" error={branding.errors.accent} hint="Aperçu en direct dans toute l'interface." className="sm:col-span-2">
+              <FieldGroup label="Couleur d'accent" error={branding.errors.accent} hint="Aperçu en direct dans toute l'interface." className="sm:col-span-2">
                 <ColorPicker value={branding.values.accent} onChange={(v) => branding.set("accent", v)} disabled={!branding.canEdit} withHex />
-              </Field>
+              </FieldGroup>
             </FormGrid>
           </div>
           <BrandPreview name={branding.values.app_name} accent={isHexColor(liveAccent) ? liveAccent : "#5b6cff"} logoUrl={branding.values.logo_url || c.logo_url} company={c.name || c.legal_name} />

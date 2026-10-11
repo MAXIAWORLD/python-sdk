@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { Checkbox as RCheckbox, Switch as RSwitch } from "radix-ui";
-import { forwardRef, useState, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { cloneElement, forwardRef, isValidElement, useId, useState, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { Option } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -53,23 +53,31 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   );
 });
 
-export function Field({ label, hint, error, children, className, required, action }: { label?: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; className?: string; required?: boolean; action?: ReactNode }) {
+/**
+ * Labelled form row. The label targets the control by id (a wrapping <label> would also "click" the first
+ * button inside the row — clear, regenerate, colour swatch…). A single child element receives the id.
+ */
+export function Field({ label, hint, error, children, className, required, action, htmlFor }: { label?: ReactNode; hint?: ReactNode; error?: string | null; children: ReactNode; className?: string; required?: boolean; action?: ReactNode; htmlFor?: string }) {
+  const autoId = useId();
+  const child = isValidElement<{ id?: string }>(children) ? children : null;
+  const controlId = htmlFor ?? child?.props.id ?? autoId;
+  const control = child && !htmlFor && !child.props.id ? cloneElement(child, { id: controlId }) : children;
   return (
-    <label className={cn("block", className)}>
+    <div className={cn("block", className)}>
       {(label || action) && (
-        <span className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
           {label && (
-            <span className="text-[12.5px] font-medium text-fg-2">
+            <label htmlFor={controlId} className="text-[12.5px] font-medium text-fg-2">
               {label}
               {required && <span className="ml-0.5 text-[var(--accent)]">*</span>}
-            </span>
+            </label>
           )}
           {action}
-        </span>
+        </div>
       )}
-      {children}
+      {control}
       {error ? <span className="mt-1 block text-[12px] text-red-500">{error}</span> : hint ? <span className="mt-1 block text-[12px] text-fg-3">{hint}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -139,9 +147,10 @@ export function SearchInput({ value, onChange, placeholder = "Rechercher…", cl
   );
 }
 
-export function NumberInput({ value, onChange, suffix, step = "any", min, className, placeholder }: { value: number | string | null | undefined; onChange: (v: number | null) => void; suffix?: ReactNode; step?: string | number; min?: number; className?: string; placeholder?: string }) {
+export function NumberInput({ value, onChange, suffix, step = "any", min, className, placeholder, id }: { value: number | string | null | undefined; onChange: (v: number | null) => void; suffix?: ReactNode; step?: string | number; min?: number; className?: string; placeholder?: string; id?: string }) {
   return (
     <Input
+      id={id}
       type="number"
       inputMode="decimal"
       step={step}

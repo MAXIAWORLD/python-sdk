@@ -46,7 +46,7 @@ def status(session: Session = Depends(get_session), user: User = Depends(get_cur
     default = agent.default_provider(session)
     ai = get_section(session, "ai")
     return {
-        "configured": bool(providers),
+        "configured": default is not None,
         "default_provider": {"id": default.id, "name": default.name, "kind": default.kind, "model": default.default_model} if default else None,
         "providers": [{"id": p.id, "name": p.name, "kind": p.kind, "default_model": p.default_model, "models": p.models} for p in providers],
         "assistant_name": ai.get("assistant_name") or "Iris",

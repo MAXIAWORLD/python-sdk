@@ -166,7 +166,8 @@ def list_tokens(session: Session = Depends(get_session), user: User = Depends(ge
 @router.post("/tokens", status_code=201)
 def create_token(payload: dict = Body(...), session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     token, prefix, token_hash = generate_api_token()
-    scopes = [s for s in (payload.get("scopes") or ["api", "mcp"]) if s in ("api", "mcp")]
+    # "ics" = read-only calendar feed key (it ends up stored by third-party calendar apps).
+    scopes = [s for s in (payload.get("scopes") or ["api", "mcp"]) if s in ("api", "mcp", "ics")]
     row = ApiToken(user_id=user.id, name=(payload.get("name") or "Jeton API").strip()[:80], prefix=prefix, token_hash=token_hash, scopes=scopes or ["api", "mcp"])
     session.add(row)
     audit.record(session, "token", user.id, "api_token", None, f"Création du jeton « {row.name} »")

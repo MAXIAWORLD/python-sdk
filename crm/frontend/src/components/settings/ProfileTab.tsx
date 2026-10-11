@@ -14,7 +14,7 @@ import { errorMessage, toastError } from "@/lib/hooks";
 import type { User } from "@/lib/types";
 import { useAuth } from "@/stores/auth";
 import { useUI } from "@/stores/ui";
-import { Callout, ColorPicker, FormGrid, PasswordInput, PasswordStrength, SaveBar, SettingsCard, TabHeader, useReportDirty, useSettings, type SaveableForm } from "./shared";
+import { Callout, ColorPicker, FieldGroup, FormGrid, PasswordInput, PasswordStrength, SaveBar, SettingsCard, TabHeader, useReportDirty, useSettings, type SaveableForm } from "./shared";
 import { generatePassword, isUrl, passwordValid } from "./validators";
 
 type ProfileValues = Pick<User, "name" | "title" | "phone" | "color" | "avatar_url" | "signature">;
@@ -299,9 +299,9 @@ function ProfileContent({ user }: { user: User }) {
           <Field label="Photo (URL)" hint="Lien vers une image carrée (LinkedIn, Gravatar…). Laissez vide pour afficher vos initiales." error={form.errors.avatar_url} className="sm:col-span-2">
             <Input value={v.avatar_url ?? ""} onChange={(e) => form.set("avatar_url", e.target.value)} placeholder="https://…" inputMode="url" />
           </Field>
-          <Field label="Couleur" hint="Utilisée pour votre avatar, vos événements et vos affectations." className="sm:col-span-2">
+          <FieldGroup label="Couleur" hint="Utilisée pour votre avatar, vos événements et vos affectations." className="sm:col-span-2">
             <ColorPicker value={v.color} onChange={(c) => form.set("color", c)} />
-          </Field>
+          </FieldGroup>
         </FormGrid>
       </SettingsCard>
 

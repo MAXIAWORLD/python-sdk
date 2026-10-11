@@ -4,8 +4,8 @@ import type { SellerParty } from "./types";
 
 export const natureLabel = (nature?: string | null) => labelOf(NATURES, nature ?? "services");
 
-/** « 20 % », « 5,5 % ». */
-export function vatLabel(rate: number) {
+/** Rate in French notation: « 20 % », « 5,5 % » (VAT, discount, deposit). */
+export function rateLabel(rate: number) {
   return `${number(rate, rate % 1 ? 1 : 0)} %`;
 }
 

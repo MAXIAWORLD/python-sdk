@@ -18,7 +18,7 @@ import { refColor } from "@/components/work/TaskCard";
 import { TimeEntryDialog, type TimeEntryDefaults } from "@/components/work/TimeEntryDialog";
 import { TimerCard } from "@/components/work/TimerCard";
 import { Timesheet } from "@/components/work/Timesheet";
-import { clock, hours, weekDays, weekStart, type TimeEntryRow } from "@/components/work/work-utils";
+import { clock, hours, isRunning, weekDays, weekStart, type TimeEntryRow } from "@/components/work/work-utils";
 import { api, download } from "@/lib/api";
 import { date, duration, isoDate, money, percent } from "@/lib/format";
 import { toastError, useList } from "@/lib/hooks";
@@ -134,6 +134,7 @@ function TimesheetPanel({ onAdd, onEdit }: { onAdd: (d: TimeEntryDefaults) => vo
   const userId = member === null ? me?.id : member.id === "all" ? undefined : member.id;
   const { data, isLoading } = useList<TimeEntryRow>("time-entries", { date__gte: isoDate(start), date__lte: isoDate(addDays(start, 6)), user_id: userId, sort: "date", limit: 1000 });
   const current = isSameWeek(start, new Date(), { weekStartsOn: 1 });
+  const entries = useMemo(() => (data?.items ?? []).filter((e) => !isRunning(e)), [data]);
 
   return (
     <Glass glow className="flex flex-col">
@@ -169,7 +170,7 @@ function TimesheetPanel({ onAdd, onEdit }: { onAdd: (d: TimeEntryDefaults) => vo
         </div>
       </div>
       <div className="px-3 pb-4 pt-3 sm:px-4">
-        <Timesheet key={isoDate(start)} start={start} entries={data?.items ?? []} loading={isLoading} showUser={member?.id === "all"} onAdd={(a) => onAdd({ ...a, user_id: typeof member?.id === "number" ? member.id : undefined })} onEdit={onEdit} />
+        <Timesheet key={isoDate(start)} start={start} entries={entries} loading={isLoading} showUser={member?.id === "all"} onAdd={(a) => onAdd({ ...a, user_id: typeof member?.id === "number" ? member.id : undefined })} onEdit={onEdit} />
       </div>
     </Glass>
   );
@@ -319,7 +320,20 @@ export default function TimePage() {
         </div>
       ),
     },
-    { key: "minutes", header: "Durée", sortKey: "minutes", align: "right", cell: (e) => <span className="font-semibold tabular">{clock(e.minutes)}</span> },
+    {
+      key: "minutes",
+      header: "Durée",
+      sortKey: "minutes",
+      align: "right",
+      cell: (e) =>
+        isRunning(e) ? (
+          <Badge tone="red" dot>
+            En cours
+          </Badge>
+        ) : (
+          <span className="font-semibold tabular">{clock(e.minutes)}</span>
+        ),
+    },
     {
       key: "billing",
       header: "Facturation",

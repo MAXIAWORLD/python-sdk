@@ -5,7 +5,7 @@ import { useState, type PointerEvent } from "react";
 import { date, time } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { itemsOnDay, layoutDay, type CalendarItem, type Placed } from "./calendar-utils";
-import { ItemChip, itemColor, itemTitle } from "./CalendarParts";
+import { isStruck, ItemChip, itemColor, itemTitle } from "./CalendarParts";
 import { useNow } from "./hooks";
 import { tint, weekDays, weekStart } from "./work-utils";
 
@@ -39,7 +39,7 @@ function EventBlock({ placed, startHour, onOpen }: { placed: Placed; startHour: 
         backdropFilter: "blur(10px)",
       }}
     >
-      <span className="truncate pl-1 font-semibold text-fg">{itemTitle(item)}</span>
+      <span className={cn("truncate pl-1 font-semibold text-fg", isStruck(item) && "text-fg-3 line-through")}>{itemTitle(item)}</span>
       {height > 34 && (
         <span className="truncate pl-1 tabular text-fg-2">
           {time(item.start)} – {time(item.end)}

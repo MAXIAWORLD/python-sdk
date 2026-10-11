@@ -17,7 +17,7 @@ import { keys, toastError, useInvalidate, useList } from "@/lib/hooks";
 import type { Deal, Paginated, Pipeline, Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { can, useAuth } from "@/stores/auth";
-import { Callout, ChoiceCards, ColorPicker, ReadOnlyNotice, SettingsCard, SWATCHES, TabHeader } from "./shared";
+import { Callout, ChoiceCards, ColorPicker, FieldGroup, ReadOnlyNotice, SettingsCard, SWATCHES, TabHeader } from "./shared";
 
 const KINDS = [
   { value: "sales", label: "Ventes" },
@@ -282,9 +282,9 @@ function NewPipelineDialog({ open, onOpenChange, position, onCreated }: { open: 
             <Select options={KINDS} value={kind} onChange={setKind} />
           </Field>
         </div>
-        <Field label="Couleur">
+        <FieldGroup label="Couleur">
           <ColorPicker value={color} onChange={setColor} />
-        </Field>
+        </FieldGroup>
         <div>
           <div className="mb-1.5 text-[12.5px] font-medium text-fg-2">Étapes de départ</div>
           <ChoiceCards

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from fastapi.testclient import TestClient
+
+from prisme.main import app
+
 
 def test_auth_and_csrf(client):
     me = client.get("/api/auth/me")
@@ -86,9 +90,12 @@ def test_public_quote_signature(client):
     quote = client.post("/api/quotes", json={"company_id": company["id"], "lines": [{"description": "Licence", "quantity": 1, "unit_price": 500}]}).json()
     client.post(f"/api/quotes/{quote['id']}/mark-sent")
     token = client.get(f"/api/quotes/{quote['id']}").json()["public_token"]
-    view = client.get(f"/api/public/quotes/{token}")
+    # A team member previewing the link does not count as the customer having seen it.
+    assert client.get(f"/api/public/quotes/{token}").json()["status"] == "sent"
+    customer = TestClient(app)  # no session cookie
+    view = customer.get(f"/api/public/quotes/{token}")
     assert view.status_code == 200 and view.json()["status"] == "viewed"
-    ok = client.post(f"/api/public/quotes/{token}/accept", json={"name": "Marie Client", "email": "marie@client.fr", "agree": True})
+    ok = customer.post(f"/api/public/quotes/{token}/accept", json={"name": "Marie Client", "email": "marie@client.fr", "agree": True})
     assert ok.status_code == 200 and ok.json()["signature_hash"]
     assert client.get(f"/api/quotes/{quote['id']}").json()["status"] == "accepted"
 
@@ -170,3 +177,51 @@ def test_deleting_a_deal_detaches_its_records(client):
     task = client.post("/api/tasks", json={"title": "Suivi", "deal_id": deal["id"]}).json()
     assert client.delete(f"/api/deals/{deal['id']}").status_code == 200
     assert client.get(f"/api/tasks/{task['id']}").json()["deal_id"] is None
+
+
+def test_hook_set_secrets_are_saved(client):
+    # Invited user: the temporary password set by the API must work.
+    created = client.post("/api/users", json={"name": "Invité", "email": "invite@test.fr", "role": "member", "password": "Bienvenue-2026-Prisme!"})
+    assert created.status_code == 201, created.text
+    from fastapi.testclient import TestClient as _Client
+
+    login = _Client(app).post("/api/auth/login", json={"email": "invite@test.fr", "password": "Bienvenue-2026-Prisme!"}, headers={"X-Requested-With": "prisme"})
+    assert login.status_code == 200, login.text
+    # AI provider key is stored (encrypted) and the provider becomes usable.
+    provider = client.post("/api/ai-providers", json={"name": "Claude", "kind": "anthropic", "default_model": "claude-opus-5-5", "api_key": "sk-ant-test-123456789", "enabled": True, "is_default": True}).json()
+    assert provider["api_key_set"] is True
+    assert client.get("/api/ai/status").json()["configured"] is True
+    # A client can never write the hash directly.
+    client.patch(f"/api/users/{created.json()['id']}", json={"password_hash": "x"})
+    assert _Client(app).post("/api/auth/login", json={"email": "invite@test.fr", "password": "Bienvenue-2026-Prisme!"}, headers={"X-Requested-With": "prisme"}).status_code == 200
+
+
+def test_cannot_deactivate_self(client):
+    me = client.get("/api/auth/me").json()
+    assert client.patch(f"/api/users/{me['id']}", json={"is_active": False}).status_code == 409
+
+
+def test_backup_hides_credentials(client):
+    client.post("/api/webhooks", json={"name": "Hook", "url": "https://example.org/hook", "secret": "s3cr3t-value", "events": ["deal.won"], "active": False})
+    text = client.get("/api/export/backup").text
+    assert "s3cr3t-value" not in text and "scrypt$16384" not in text
+
+
+def test_project_progress_follows_tasks(client):
+    project = client.post("/api/projects", json={"name": "Avancement"}).json()
+    first = client.post("/api/tasks", json={"title": "A", "project_id": project["id"]}).json()
+    client.post("/api/tasks", json={"title": "B", "project_id": project["id"]})
+    client.patch(f"/api/tasks/{first['id']}", json={"status": "done"})
+    assert client.get(f"/api/projects/{project['id']}").json()["progress"] == 50
+
+
+def test_segment_with_bad_value_is_a_422(client):
+    rules = {"match": "all", "conditions": [{"field": "lead_score", "op": "gt", "value": "abc"}]}
+    assert client.post("/api/segments/preview", json={"entity": "contacts", "rules": rules}).status_code == 422
+    ok = {"match": "all", "conditions": [{"field": "created_at", "op": "gte", "value": "2020-01-01"}]}
+    assert client.post("/api/segments/preview", json={"entity": "contacts", "rules": ok}).status_code == 200
+
+
+def test_datetime_filters(client):
+    assert client.get("/api/contacts", params={"created_at__gte": "2020-01-01"}).status_code == 200
+    assert client.get("/api/events", params={"start_at__lt": "2030-01-01T00:00:00Z"}).status_code == 200

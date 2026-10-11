@@ -43,7 +43,7 @@ export function FileThumb({ doc, className, iconSize = 40 }: { doc: Doc; classNa
   if (kind === "image" && !failed)
     return (
       <div className={cn("overflow-hidden bg-black/[0.04] dark:bg-white/[0.05]", className)}>
-        <img src={fileHref(doc)} alt="" loading="lazy" onError={() => setFailed(true)} className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
+        <img src={fileHref(doc)} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
       </div>
     );
   const ext = extOf(doc.name);

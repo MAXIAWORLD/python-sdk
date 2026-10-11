@@ -10,7 +10,7 @@ import { useCreate, useRemove, useUpdate } from "@/lib/hooks";
 import type { TimeEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { can, useAuth } from "@/stores/auth";
-import { clock, parseDuration } from "./work-utils";
+import { clock, isRunning, parseDuration } from "./work-utils";
 
 export interface TimeEntryDefaults {
   project_id?: number | null;
@@ -58,14 +58,15 @@ export function TimeEntryDialog({ open, onOpenChange, entry, defaults }: { open:
   if (open && key !== lastKey) {
     setLastKey(key);
     setDraft(initialDraft(entry, defaults, me?.id ?? null));
-  }
+  } else if (!open && lastKey) setLastKey(""); // reopening the same entry starts from fresh values
   const create = useCreate<TimeEntry>("time-entries", { message: "Temps enregistré" });
   const update = useUpdate<TimeEntry>("time-entries", { message: "Saisie mise à jour" });
   const remove = useRemove("time-entries", { message: "Saisie supprimée" });
   const confirm = useConfirm();
   const locked = !!entry?.invoice_id;
+  const running = !!entry && isRunning(entry);
   const minutes = parseDuration(draft.duration);
-  const invalid = !locked && (!minutes || minutes <= 0 || !draft.date);
+  const invalid = !locked && (!draft.date || (!running && (!minutes || minutes <= 0)));
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
   const submit = async (e?: FormEvent) => {
@@ -73,7 +74,7 @@ export function TimeEntryDialog({ open, onOpenChange, entry, defaults }: { open:
     if (invalid) return;
     const data: Record<string, unknown> = locked
       ? { description: draft.description || null }
-      : { project_id: draft.project_id, task_id: draft.task_id, date: draft.date, minutes, billable: draft.billable, hourly_rate: draft.hourly_rate, description: draft.description || null, ...(manager && draft.user_id ? { user_id: draft.user_id } : {}) };
+      : { project_id: draft.project_id, task_id: draft.task_id, date: draft.date, ...(running ? {} : { minutes }), billable: draft.billable, hourly_rate: draft.hourly_rate, description: draft.description || null, ...(manager && draft.user_id ? { user_id: draft.user_id } : {}) };
     try {
       if (entry) await update.mutateAsync({ id: entry.id, data });
       else await create.mutateAsync(data);
@@ -86,8 +87,7 @@ export function TimeEntryDialog({ open, onOpenChange, entry, defaults }: { open:
   const destroy = async () => {
     if (!entry) return;
     if (!(await confirm({ title: "Supprimer cette saisie ?", description: `${duration(entry.minutes)} le ${dateShort(entry.date)}.`, danger: true, confirmLabel: "Supprimer" }))) return;
-    await remove.mutateAsync(entry.id);
-    onOpenChange(false);
+    remove.mutate(entry.id, { onSuccess: () => onOpenChange(false) });
   };
 
   return (
@@ -134,6 +134,12 @@ export function TimeEntryDialog({ open, onOpenChange, entry, defaults }: { open:
             </span>
           </div>
         )}
+        {running && (
+          <div className="flex items-start gap-2.5 rounded-[14px] bg-red-500/10 px-3.5 py-2.5 text-[13px] text-red-700 dark:text-red-300">
+            <Clock3 className="mt-0.5 size-4 shrink-0" />
+            <span>Chronomètre en cours : la durée sera calculée à son arrêt.</span>
+          </div>
+        )}
         <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-2">
           <Field label="Projet" className="sm:col-span-2">
             <EntitySelect resource="projects" value={draft.project_id} initialLabel={entry?.project?.name ?? defaults?.project_name} disabled={locked} onChange={(id) => setDraft((d) => ({ ...d, project_id: id, task_id: null }))} placeholder="Choisir un projet…" />
@@ -144,15 +150,21 @@ export function TimeEntryDialog({ open, onOpenChange, entry, defaults }: { open:
           <Field label="Date" required>
             <Input type="date" value={draft.date} disabled={locked} onChange={(e) => set("date", e.target.value)} />
           </Field>
-          <Field label="Durée" required className="sm:col-span-2" hint={minutes ? `= ${duration(minutes)}` : draft.duration ? "Format non reconnu" : undefined} error={draft.duration && !minutes ? "Durée invalide" : null}>
+          <Field
+            label="Durée"
+            required
+            className="sm:col-span-2"
+            hint={minutes ? `= ${duration(minutes)}` : undefined}
+            error={running || !draft.duration ? null : minutes === null ? "Format non reconnu (ex. 1h30, 1:30, 1,5, 45 min)" : minutes <= 0 ? "La durée doit être supérieure à zéro" : null}
+          >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input value={draft.duration} disabled={locked} onChange={(e) => set("duration", e.target.value)} placeholder="1h30" className="tabular sm:w-[140px]" autoFocus={!entry} />
+              <Input value={draft.duration} disabled={locked || running} onChange={(e) => set("duration", e.target.value)} placeholder="1h30" className="tabular sm:w-[140px]" autoFocus={!entry} />
               <div className="flex flex-wrap gap-1.5">
                 {PRESETS.map((m) => (
                   <button
                     key={m}
                     type="button"
-                    disabled={locked}
+                    disabled={locked || running}
                     onClick={() => set("duration", clock(m))}
                     className={cn("h-8 rounded-full px-2.5 text-[12.5px] font-medium transition disabled:opacity-40", minutes === m ? "btn-primary" : "glass-flat text-fg-2 hover:text-fg")}
                   >

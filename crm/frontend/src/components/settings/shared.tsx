@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, CheckCircle2, Copy, Eye, EyeOff, Info, Lock, ShieldAlert, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { useLocation } from "react-router";
 import { toast } from "sonner";
 import { Glass } from "@/components/glass/Glass";
@@ -202,7 +202,8 @@ export function SaveBar({ forms }: { forms: SaveableForm[] }) {
               <span className="relative inline-flex size-2.5 rounded-full bg-amber-400" />
             </span>
             <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
-              {count} modification{count > 1 ? "s" : ""} non enregistrée{count > 1 ? "s" : ""}
+              {count} modification{count > 1 ? "s" : ""}
+              <span className="hidden sm:inline"> non enregistrée{count > 1 ? "s" : ""}</span>
             </span>
             <Button variant="ghost" size="sm" disabled={saving} onClick={() => dirtyForms.forEach((f) => f.reset())}>
               Annuler
@@ -285,6 +286,32 @@ export function SettingsCard({
       <div className={cn("px-5 py-5 sm:px-6", bodyClassName)}>{children}</div>
       {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5 sm:px-6">{footer}</div>}
     </Glass>
+  );
+}
+
+/**
+ * Same look as the shared `Field`, but rendered as a <div>: use it when the header holds an action
+ * button or when the control is composite (color swatches…). A wrapping <label> would forward
+ * clicks on its text to the first button inside it.
+ */
+export function FieldGroup({ label, hint, error, required, action, htmlFor, className, children }: { label?: ReactNode; hint?: ReactNode; error?: string | null; required?: boolean; action?: ReactNode; htmlFor?: string; className?: string; children: ReactNode }) {
+  const LabelTag = htmlFor ? "label" : "span";
+  return (
+    <div className={cn("block", className)}>
+      {(label || action) && (
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          {label && (
+            <LabelTag htmlFor={htmlFor} className="text-[12.5px] font-medium text-fg-2">
+              {label}
+              {required && <span className="ml-0.5 text-[var(--accent)]">*</span>}
+            </LabelTag>
+          )}
+          {action}
+        </div>
+      )}
+      {children}
+      {error ? <span className="mt-1 block text-[12px] text-red-500">{error}</span> : hint ? <span className="mt-1 block text-[12px] text-fg-3">{hint}</span> : null}
+    </div>
   );
 }
 
@@ -439,11 +466,12 @@ export function SwitchField<T>({ form, name, label, description, className }: { 
 }
 
 /** Password-type input with a visibility toggle. */
-export function PasswordInput({ value, onChange, placeholder, disabled, autoComplete = "new-password", className, invalid }: { value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean; autoComplete?: string; className?: string; invalid?: boolean }) {
+export function PasswordInput({ id, value, onChange, placeholder, disabled, autoComplete = "new-password", className, invalid }: { id?: string; value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean; autoComplete?: string; className?: string; invalid?: boolean }) {
   const [show, setShow] = useState(false);
   return (
     <div className={cn("relative", className)}>
       <input
+        id={id}
         type={show ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -473,9 +501,11 @@ export function SecretField<T>({ form, name, label, hint, placeholder = "Non ren
   const touched = name in form.draft;
   const draftValue = (form.draft[name] as string | null | undefined) ?? "";
   const willClear = touched && draftValue === "";
+  const id = useId();
   return (
-    <Field
+    <FieldGroup
       label={label}
+      htmlFor={id}
       hint={willClear ? <span className="text-red-500">Le secret enregistré sera supprimé à l'enregistrement.</span> : hint}
       className={className}
       action={
@@ -493,12 +523,13 @@ export function SecretField<T>({ form, name, label, hint, placeholder = "Non ren
       }
     >
       <PasswordInput
+        id={id}
         value={touched ? draftValue : ""}
         onChange={(v) => (v ? form.set(name, v as T[typeof name]) : form.unset(name))}
         placeholder={willClear ? "Sera supprimé" : isSet ? `Enregistré ${masked ?? "••••"} — saisissez pour remplacer` : placeholder}
         disabled={!form.canEdit}
       />
-    </Field>
+    </FieldGroup>
   );
 }
 

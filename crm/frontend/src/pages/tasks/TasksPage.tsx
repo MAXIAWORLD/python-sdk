@@ -1,5 +1,5 @@
 import { Columns3, ListTodo, Plus, Rows3, SquareCheckBig, Sun } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/data/DataTable";
 import { FilterChip, PageHeader } from "@/components/data/blocks";
 import { RecordDialog } from "@/components/entity/EntityForm";
@@ -51,8 +51,9 @@ export default function TasksPage() {
   const base: Params = { q: ls.params.q as string | undefined, assignee_id: assigneeId, priority: ls.filters.priority, type: ls.filters.type, project_id: ls.filters.project_id };
 
   const open = useList<Task>("tasks", { ...base, status__in: OPEN, sort: "due_date,position", limit: 500 });
-  const done = useList<Task>("tasks", { ...base, status: "done", sort: "-completed_at", limit: 50 }, { enabled: view === "focus" });
-  const board = useList<Task>("tasks", { ...base, status__in: `${OPEN},done`, sort: "position", limit: 500 }, { enabled: view === "board" });
+  // Recently completed tasks: "done today" in the focus view, and a bounded "Terminé" column on the board.
+  const done = useList<Task>("tasks", { ...base, status: "done", sort: "-completed_at", limit: 30 }, { enabled: view !== "list" });
+  const boardTasks = useMemo(() => [...(open.data?.items ?? []), ...(done.data?.items ?? [])], [open.data, done.data]);
   const list = useList<Task>("tasks", { ...base, ...(state === "open" ? { status__in: OPEN } : state === "done" ? { status__in: "done,cancelled" } : {}), sort: ls.sort, limit: ls.pageSize, offset: ls.page * ls.pageSize }, { enabled: view === "list" });
 
   const openTasks = open.data?.items ?? [];
@@ -176,7 +177,7 @@ export default function TasksPage() {
 
       {view === "focus" && <TaskFocus open={openTasks} done={done.data?.items ?? []} loading={open.isLoading} showAssignee={assignee !== "me"} onOpen={(t) => setTaskId(t.id)} />}
 
-      {view === "board" && <TaskBoard tasks={board.data?.items ?? []} loading={board.isLoading} onOpen={(t) => setTaskId(t.id)} createDefaults={{ assignee_id: assigneeId ?? me?.id, ...(ls.filters.project_id ? { project_id: Number(ls.filters.project_id) } : {}) }} />}
+      {view === "board" && <TaskBoard tasks={boardTasks} loading={open.isLoading || done.isLoading} onOpen={(t) => setTaskId(t.id)} createDefaults={{ assignee_id: assigneeId ?? me?.id, ...(ls.filters.project_id ? { project_id: Number(ls.filters.project_id) } : {}) }} />}
 
       {view === "list" && (
         <div className="space-y-3">

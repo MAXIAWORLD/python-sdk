@@ -52,8 +52,7 @@ export function EventSheet({ event, onClose }: { event: CalendarEvent | null; on
 
   const destroy = async () => {
     if (!(await confirm({ title: `Supprimer « ${ev.title} » ?`, description: "L'événement disparaîtra aussi des agendas abonnés (ICS) à la prochaine synchronisation.", danger: true, confirmLabel: "Supprimer" }))) return;
-    await remove.mutateAsync(ev.id);
-    onClose();
+    remove.mutate(ev.id, { onSuccess: onClose });
   };
 
   const prepare = () => {

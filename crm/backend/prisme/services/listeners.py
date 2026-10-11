@@ -100,7 +100,7 @@ def notification_listener(item: dict[str, Any]) -> None:
             if ticket:
                 target = ticket.assignee_id
                 notify(session, target, f"🎫 Nouveau ticket {ticket.number}", ticket.subject, f"/tickets/{ticket.id}", "ticket")
-        elif event == "form.submitted":
+        elif event == "form.submitted" and payload.get("notify", True):
             notify(session, payload.get("owner_id"), f"📥 Nouveau lead : {payload.get('name') or payload.get('email')}", f"Formulaire « {payload.get('form')} »", f"/contacts/{payload.get('contact_id')}", "form")
         elif event == "task.created" and payload.get("data", {}).get("assignee_id") not in (None, actor):
             data = payload["data"]

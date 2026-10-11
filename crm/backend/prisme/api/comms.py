@@ -120,16 +120,15 @@ def download(filename: str, request: Request, session: Session = Depends(get_ses
     path = env.uploads_dir / safe
     if not path.exists():
         raise HTTPException(404, "Fichier introuvable.")
-    from sqlmodel import select
-
     doc = session.exec(select(Document).where(Document.filename == safe)).first()
     download_name = doc.name if doc else safe
     media = (doc.mime if doc else None) or mimetypes.guess_type(safe)[0] or "application/octet-stream"
     inline = media.startswith("image/") or media == "application/pdf"
     response = FileResponse(path, media_type=media, filename=download_name, content_disposition_type="inline" if inline else "attachment")
-    # Uploaded files never execute in the app origin (e.g. scripts inside SVG).
-    response.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox"
     response.headers["X-Content-Type-Options"] = "nosniff"
+    if media != "application/pdf":
+        # Uploaded files never execute in the app origin (e.g. scripts inside SVG); PDFs need the browser's viewer.
+        response.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox"
     return response
 
 

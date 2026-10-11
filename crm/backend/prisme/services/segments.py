@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import String, and_, cast, or_
+from sqlalchemy import Date, DateTime, String, and_, cast, or_
 from sqlmodel import Session, func, select
 
+from ..crud import coerce
 from ..models import Company, Contact, Deal, utcnow
 
 OPERATORS = {
@@ -38,6 +39,10 @@ CONTACT_FIELDS = {
 COMPANY_FIELDS = {"type", "status", "industry", "size", "employees", "city", "country", "health_score", "tags", "created_at", "owner_id", "source", "annual_revenue"}
 
 
+def _is_temporal(column: Any) -> bool:
+    return isinstance(getattr(column.type, "impl", column.type), (DateTime, Date))
+
+
 def _expr(model: Any, field: str, op: str, value: Any) -> Any:
     if field.startswith("company.") and model is Contact:
         sub_field = field.split(".", 1)[1]
@@ -52,6 +57,9 @@ def _expr(model: Any, field: str, op: str, value: Any) -> Any:
     if field not in allowed:
         raise HTTPException(422, f"Champ inconnu : {field}")
     attr = getattr(model, field)
+    column = model.__table__.columns[field]
+    if op in ("eq", "ne", "gt", "gte", "lt", "lte") and value not in (None, ""):
+        value = coerce(model, field, value) if not isinstance(value, (list, dict)) else value
     if op == "eq":
         return attr == value
     if op == "ne":
@@ -61,8 +69,10 @@ def _expr(model: Any, field: str, op: str, value: Any) -> Any:
     if op == "not_contains":
         return or_(~cast(attr, String).ilike(f"%{value}%"), attr.is_(None))
     if op in ("gt", "gte", "lt", "lte"):
-        number = float(value)
-        return {"gt": attr > number, "gte": attr >= number, "lt": attr < number, "lte": attr <= number}[op]
+        if value in (None, ""):
+            raise ValueError("valeur manquante")
+        bound = value if isinstance(value, (int, float, datetime, date)) or _is_temporal(column) else float(value)
+        return {"gt": attr > bound, "gte": attr >= bound, "lt": attr < bound, "lte": attr <= bound}[op]
     if op == "in":
         values = value if isinstance(value, list) else [v.strip() for v in str(value).split(",") if v.strip()]
         return attr.in_(values)
@@ -88,7 +98,12 @@ def _expr(model: Any, field: str, op: str, value: Any) -> Any:
 def build_query(entity: str, rules: dict[str, Any]) -> Any:
     model = Contact if entity == "contacts" else Company
     conditions = [c for c in (rules or {}).get("conditions", []) if c.get("field") and c.get("op")]
-    exprs = [_expr(model, c["field"], c["op"], c.get("value")) for c in conditions]
+    exprs = []
+    for c in conditions:
+        try:
+            exprs.append(_expr(model, c["field"], c["op"], c.get("value")))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, f"Condition incomplète ou invalide sur « {c['field']} » : vérifiez la valeur saisie.") from exc
     stmt = select(model)
     if model is Contact:
         stmt = stmt.where(Contact.anonymized_at.is_(None))

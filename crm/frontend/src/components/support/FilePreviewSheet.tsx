@@ -65,18 +65,19 @@ function parseCsv(text: string, maxRows = 60) {
   return rows;
 }
 
-function Preview({ doc }: { doc: Doc }) {
+const apiPath = (d: Doc) => `/files/${encodeURIComponent(d.filename)}`;
+
+function Preview({ doc, pdf }: { doc: Doc; pdf: { url: string | null; isError: boolean } }) {
   const kind = fileKind(doc.mime, doc.name);
   const ext = extOf(doc.name);
-  const path = `/files/${encodeURIComponent(doc.filename)}`;
-  const pdf = useObjectUrl(kind === "pdf" ? path : null);
+  const path = apiPath(doc);
   const text = useText(kind === "text" || ext === "csv" ? path : null);
   const meta = kindMeta(kind);
 
   if (kind === "image")
     return (
       <div className="flex max-h-[58vh] min-h-[240px] items-center justify-center bg-[repeating-conic-gradient(var(--hairline)_0%_25%,transparent_0%_50%)] bg-[length:20px_20px] p-3">
-        <img src={fileHref(doc)} alt={doc.name} className="max-h-[54vh] max-w-full rounded-[10px] object-contain shadow-[var(--glass-shadow)]" />
+        <img src={fileHref(doc)} alt={doc.name} draggable={false} className="max-h-[54vh] max-w-full rounded-[10px] object-contain shadow-[var(--glass-shadow)]" />
       </div>
     );
   if (kind === "pdf")
@@ -150,6 +151,8 @@ function Unavailable({ doc, message }: { doc: Doc; message: string }) {
 export function FilePreviewSheet({ doc, onClose, onRename, onMove, onDelete }: { doc: Doc | null; onClose: () => void; onRename: (d: Doc) => void; onMove: (d: Doc) => void; onDelete: (d: Doc) => void }) {
   const links = doc ? linksOf(doc) : [];
   const kind = doc ? kindMeta(fileKind(doc.mime, doc.name)) : null;
+  // PDFs go through a blob: URL, for the preview and « Ouvrir » alike (the file route sends a CSP sandbox header).
+  const pdf = useObjectUrl(doc && kind?.value === "pdf" ? apiPath(doc) : null);
   return (
     <Sheet
       open={!!doc}
@@ -163,7 +166,7 @@ export function FilePreviewSheet({ doc, onClose, onRename, onMove, onDelete }: {
               <span className="hidden sm:inline">Supprimer</span>
             </Button>
             <Button variant="glass" asChild>
-              <a href={fileHref(doc)} target="_blank" rel="noreferrer">
+              <a href={pdf.url ?? fileHref(doc)} target="_blank" rel="noreferrer">
                 <ExternalLink className="size-4" />
                 <span className="hidden sm:inline">Ouvrir</span>
               </a>
@@ -180,7 +183,7 @@ export function FilePreviewSheet({ doc, onClose, onRename, onMove, onDelete }: {
       {doc && kind && (
         <div className="space-y-5">
           <div className="glass-inset overflow-hidden rounded-[20px]">
-            <Preview doc={doc} />
+            <Preview doc={doc} pdf={pdf} />
           </div>
 
           <div className="flex flex-wrap gap-2">

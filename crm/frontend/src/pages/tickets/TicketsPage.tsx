@@ -7,7 +7,6 @@ import { FilterChip, PageHeader } from "@/components/data/blocks";
 import { RecordDialog } from "@/components/entity/EntityForm";
 import { BulkBar } from "@/components/entity/EntityBlocks";
 import { Glass } from "@/components/glass/Glass";
-import { BodyPortal } from "@/components/support/BodyPortal";
 import { ChannelLabel } from "@/components/support/channels";
 import { SlaBadge } from "@/components/support/sla";
 import { TicketBoard } from "@/components/support/TicketBoard";
@@ -40,7 +39,7 @@ const STATUS_CHIPS = [{ value: "unresolved", label: "Non résolus" }, ...TICKET_
 
 /**
  * Translate the URL filters (incl. the « unresolved » and « breached » shortcuts) into API params.
- * « Hors SLA » is resolved to ticket ids because the API cannot filter on dates yet.
+ * « Hors SLA » is resolved to the ids counted by the tiles, so the list always matches the live counter.
  */
 function toApiParams(params: Params, breachedIds: string): Params {
   const { status, sla, ...rest } = params;
@@ -90,8 +89,10 @@ export default function TicketsPage() {
   // The board shows every status as a column: drop the status filter, keep the others.
   const boardParams = useMemo<Params>(() => ({ ...params, status: undefined, status__in: undefined, offset: undefined, limit: 300, sort: "sla_due_at" }), [params]);
 
-  const list = useList<Ticket>("tickets", params, { enabled: view === "table" });
-  const board = useList<Ticket>("tickets", boardParams, { enabled: view === "board" });
+  // « Hors SLA » needs the breached ids first: wait for them instead of flashing an empty list.
+  const waitingIds = ls.filters.sla === "breached" && stats.loading;
+  const list = useList<Ticket>("tickets", params, { enabled: view === "table" && !waitingIds });
+  const board = useList<Ticket>("tickets", boardParams, { enabled: view === "board" && !waitingIds });
   const rows = list.data?.items ?? [];
 
   const contactFilter = useItem<Contact>("contacts", ls.filters.contact_id ? Number(ls.filters.contact_id) : null);
@@ -125,7 +126,10 @@ export default function TicketsPage() {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        for (const [key, value] of [["status", status], ["sla", sla]] as const) {
+        for (const [key, value] of [
+          ["status", status],
+          ["sla", sla],
+        ] as const) {
           if (value) next.set(key, value);
           else next.delete(key);
         }
@@ -305,7 +309,7 @@ export default function TicketsPage() {
           <DataTable
             columns={columns}
             rows={rows}
-            loading={list.isLoading || (list.isFetching && !rows.length)}
+            loading={waitingIds || list.isLoading || (list.isFetching && !rows.length)}
             sort={ls.sort}
             onSortChange={ls.setSort}
             onRowClick={(t) => navigate(`/tickets/${t.id}`)}
@@ -323,57 +327,55 @@ export default function TicketsPage() {
       ) : board.data && board.data.items.length === 0 && !board.isLoading ? (
         <Glass>{empty}</Glass>
       ) : (
-        <TicketBoard tickets={board.data?.items ?? []} loading={board.isLoading} now={now} onMove={moveTicket} />
+        <TicketBoard tickets={board.data?.items ?? []} loading={waitingIds || board.isLoading} now={now} onMove={moveTicket} />
       )}
 
-      <BodyPortal>
-        <BulkBar count={ls.selected.length} onClear={ls.clearSelection}>
-          <Button size="sm" variant="ghost" icon={<CircleCheck className="size-4" />} onClick={() => bulk("update", { status: "resolved" }, "Tickets résolus")}>
-            Résoudre
-          </Button>
-          <Menu
-            trigger={
-              <Button size="sm" variant="ghost">
-                Statut
-              </Button>
-            }
-            items={TICKET_STATUS.map((s) => ({ label: s.label, onSelect: () => bulk("update", { status: s.value }) }))}
-          />
-          <Menu
-            trigger={
-              <Button size="sm" variant="ghost" icon={<Flag className="size-4" />}>
-                Priorité
-              </Button>
-            }
-            items={TICKET_PRIORITY.map((p) => ({ label: p.label, onSelect: () => bulk("update", { priority: p.value }) }))}
-          />
-          <Popover
-            width={280}
-            trigger={
-              <Button size="sm" variant="ghost" icon={<UserCog className="size-4" />}>
-                Assigner
-              </Button>
-            }
-          >
-            <div className="p-3">
-              <div className="mb-2 text-[12.5px] font-medium text-fg-2">Assigner à</div>
-              <EntitySelect resource="users" value={null} onChange={(id) => id && bulk("update", { assignee_id: id }, "Tickets assignés")} placeholder="Choisir un membre…" />
-            </div>
-          </Popover>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-red-500"
-            icon={<Trash2 className="size-4" />}
-            onClick={async () => {
-              if (await confirm({ title: `Supprimer ${ls.selected.length} ticket(s) ?`, description: "Les conversations associées seront également supprimées. Cette action est définitive.", danger: true, confirmLabel: "Supprimer" }))
-                bulk("delete", undefined, "Tickets supprimés");
-            }}
-          >
-            Supprimer
-          </Button>
-        </BulkBar>
-      </BodyPortal>
+      <BulkBar count={ls.selected.length} onClear={ls.clearSelection}>
+        <Button size="sm" variant="ghost" icon={<CircleCheck className="size-4" />} onClick={() => bulk("update", { status: "resolved" }, "Tickets résolus")}>
+          Résoudre
+        </Button>
+        <Menu
+          trigger={
+            <Button size="sm" variant="ghost">
+              Statut
+            </Button>
+          }
+          items={TICKET_STATUS.map((s) => ({ label: s.label, onSelect: () => bulk("update", { status: s.value }) }))}
+        />
+        <Menu
+          trigger={
+            <Button size="sm" variant="ghost" icon={<Flag className="size-4" />}>
+              Priorité
+            </Button>
+          }
+          items={TICKET_PRIORITY.map((p) => ({ label: p.label, onSelect: () => bulk("update", { priority: p.value }) }))}
+        />
+        <Popover
+          width={280}
+          trigger={
+            <Button size="sm" variant="ghost" icon={<UserCog className="size-4" />}>
+              Assigner
+            </Button>
+          }
+        >
+          <div className="p-3">
+            <div className="mb-2 text-[12.5px] font-medium text-fg-2">Assigner à</div>
+            <EntitySelect resource="users" value={null} onChange={(id) => id && bulk("update", { assignee_id: id }, "Tickets assignés")} placeholder="Choisir un membre…" />
+          </div>
+        </Popover>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-red-500"
+          icon={<Trash2 className="size-4" />}
+          onClick={async () => {
+            if (await confirm({ title: `Supprimer ${ls.selected.length} ticket(s) ?`, description: "Les conversations associées seront également supprimées. Cette action est définitive.", danger: true, confirmLabel: "Supprimer" }))
+              bulk("delete", undefined, "Tickets supprimés");
+          }}
+        >
+          Supprimer
+        </Button>
+      </BulkBar>
 
       <RecordDialog resource="tickets" open={creating} onOpenChange={setCreating} navigateOnCreate initial={{ assignee_id: me?.id }} labels={{ assignee_id: me?.name }} />
     </div>

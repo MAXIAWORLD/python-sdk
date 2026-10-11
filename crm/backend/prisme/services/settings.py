@@ -62,7 +62,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "invoice_terms": "",
         "footer": "",
         "auto_overdue": True,
-        "reminder_days": [7, 15, 30],
+        "auto_reminders": False,  # relances automatiques des factures échues (opt-in)
+        "reminder_days": [7, 15, 30],  # jours de retard déclenchant chaque relance
     },
     "branding": {"app_name": "Prisme", "accent": "#5b6cff", "logo_url": ""},
     "general": {
@@ -96,7 +97,6 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "custom_instructions": "",
         "effort": "medium",
         "mask_personal_data": False,
-        "daily_briefing": True,
     },
     "mcp": {"enabled": True},
     "rgpd": {
@@ -117,12 +117,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "einvoicing": {
         "enabled": True,
-        "format": "factur-x",  # factur-x | ubl
+        "format": "factur-x",
         "profile": "en16931",
         "platform_name": "",
-        "platform_api_url": "",
-        "platform_api_key": None,
-        "auto_transmit": False,
     },
     "accounting": {
         "journal_sales": "VT",
@@ -140,7 +137,6 @@ DEFAULTS: dict[str, dict[str, Any]] = {
 SECRET_FIELDS = {
     ("email", "smtp_password"),
     ("email", "imap_password"),
-    ("einvoicing", "platform_api_key"),
 }
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import timedelta
@@ -131,13 +132,23 @@ def render(template: Any, ctx: dict[str, Any]) -> Any:
     return _TPL.sub(repl, template)
 
 
+def _same(actual: Any, expected: Any) -> bool:
+    """Equality that treats 1500, 1500.0 and "1500" alike (event payloads mix numbers and strings)."""
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return str(actual).lower() == str(expected).lower()
+    try:
+        return float(actual) == float(expected)
+    except (TypeError, ValueError):
+        return str(actual) == str(expected)
+
+
 def check_condition(ctx: dict[str, Any], cond: dict[str, Any]) -> bool:
     field, op, expected = cond.get("field") or "", cond.get("op") or "eq", cond.get("value")
     if op == "changed":
         return field.split(".")[-1] in (ctx.get("changes") or {})
     if op == "changed_to":
         change = (ctx.get("changes") or {}).get(field.split(".")[-1])
-        return bool(change) and str(change[1]) == str(expected)
+        return bool(change) and _same(change[1], expected)
     actual = resolve(ctx, field)
     if actual is None and "." not in field:
         actual = resolve(ctx, f"entity.{field}")
@@ -159,10 +170,10 @@ def check_condition(ctx: dict[str, Any], cond: dict[str, Any]) -> bool:
         return {"gt": a > b, "gte": a >= b, "lt": a < b, "lte": a <= b}[op]
     if op == "in":
         values = expected if isinstance(expected, list) else [v.strip() for v in str(expected).split(",")]
-        return str(actual) in values
+        return any(_same(actual, v) for v in values)
     if op == "ne":
-        return str(actual) != str(expected)
-    return str(actual) == str(expected)
+        return not _same(actual, expected)
+    return _same(actual, expected)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +218,8 @@ def run_action(session: Session, action: dict[str, Any], ctx: dict[str, Any]) ->
     if kind == "create_task":
         assignee = cfg.get("assignee") or "owner"
         assignee_id = ctx["owner"].get("id") if assignee == "owner" else (ctx.get("actor_id") if assignee == "actor" else int(assignee) if str(assignee).isdigit() else None)
-        due = today() + timedelta(days=int(cfg.get("due_in_days") or 0)) if str(cfg.get("due_in_days") or "").strip() != "" else None
+        raw_due = cfg.get("due_in_days")
+        due = today() + timedelta(days=int(raw_due)) if raw_due not in (None, "") else None  # 0 means "today"
         data = {"title": cfg.get("title") or "Tâche automatique", "description": cfg.get("description"), "priority": cfg.get("priority") or "medium", "assignee_id": assignee_id, "due_date": due.isoformat() if due else None, **_links(ctx)}
         task = RESOURCES["tasks"].create(session, data, user)
         return f"Tâche « {task.title} » créée"
@@ -298,7 +310,8 @@ def run_action(session: Session, action: dict[str, Any], ctx: dict[str, Any]) ->
 
 def execute(session: Session, automation: Automation, event: str, payload: dict[str, Any], actor_id: int | None, *, dry_run: bool = False) -> AutomationRun:
     ctx = build_context(session, event, payload, actor_id)
-    run = AutomationRun(automation_id=automation.id, event=event, payload={"id": payload.get("id")}, log=[])
+    # Keep the references of the triggering event (record, contact, company…) but not the full record copy.
+    run = AutomationRun(automation_id=automation.id, event=event, payload={k: v for k, v in payload.items() if k != "data" and not isinstance(v, (dict, list))}, log=[])
     conditions = automation.conditions or []
     if not all(check_condition(ctx, c) for c in conditions):
         run.status = "skipped"
@@ -311,7 +324,8 @@ def execute(session: Session, automation: Automation, event: str, payload: dict[
     status = "success"
     for action in automation.actions or []:
         if dry_run:
-            logs.append(f"[test] {action.get('type')} : {({k: render(v, ctx) for k, v in (action.get('config') or {}).items()})}")
+            rendered = {k: render(v, ctx) for k, v in (action.get("config") or {}).items()}
+            logs.append(f"[test] {action.get('type')} : {json.dumps(rendered, ensure_ascii=False, default=str)}")
             continue
         try:
             logs.append(run_action(session, action, ctx))

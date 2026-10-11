@@ -8,18 +8,19 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from ..models import Subscription, SubscriptionChange, today
+from ..models import Company, Subscription, SubscriptionChange, today
 
 
-def record_mrr_change(session: Session, sub: Subscription, before: float, after: float, when: date | None = None) -> None:
+def record_mrr_change(session: Session, sub: Subscription, before: float, after: float, when: date | None = None, previous_status: str | None = None) -> None:
     delta = round((after or 0) - (before or 0), 2)
     if abs(delta) < 0.005:
         return
     if before <= 0 < after:
         has_history = session.exec(select(SubscriptionChange).where(SubscriptionChange.subscription_id == sub.id)).first()
-        kind = "reactivation" if has_history else "new"
+        # Resuming a pause gives back MRR the pause took (expansion); a former customer coming back is a reactivation.
+        kind = "expansion" if previous_status == "paused" else "reactivation" if has_history else "new"
     elif after <= 0 < before:
-        kind = "churn"
+        kind = "contraction" if sub.status == "paused" else "churn"  # a pause keeps the customer: not churn
     elif delta > 0:
         kind = "expansion"
     else:
@@ -102,9 +103,10 @@ def metrics(session: Session, months: int = 12) -> dict[str, Any]:
         p = plans.setdefault(s.plan, {"plan": s.plan, "mrr": 0.0, "count": 0})
         p["mrr"] += s.mrr
         p["count"] += 1
+    names = {c.id: c.name for c in session.exec(select(Company).where(Company.id.in_({s.company_id for s in active}))).all()}
     renewals = sorted(
         [
-            {"id": s.id, "plan": s.plan, "company_id": s.company_id, "date": s.current_period_end.isoformat(), "amount": s.amount * s.quantity}
+            {"id": s.id, "plan": s.plan, "company_id": s.company_id, "company": names.get(s.company_id), "date": s.current_period_end.isoformat(), "amount": s.amount * s.quantity}
             for s in active
             if s.current_period_end and today() <= s.current_period_end <= today() + timedelta(days=45)
         ],

@@ -158,10 +158,11 @@ def _ics_dt(value: datetime) -> str:
 @router.get("/calendar.ics")
 def calendar_feed(request: Request, key: str | None = None, session: Session = Depends(get_session)):
     """Abonnement iCal (Google Agenda, Apple Calendrier, Outlook) — authentification par jeton : ?key=…"""
-    user = user_from_api_token(session, key) if key else authenticate_request(request, session)
+    user = (user_from_api_token(session, key, scope="ics") or user_from_api_token(session, key)) if key else authenticate_request(request, session)
     if user is None:
         raise HTTPException(401, "Jeton invalide.")
-    events = session.exec(select(Event).where(Event.start_at >= utcnow() - timedelta(days=90)).order_by(Event.start_at)).all()
+    # Personal feed: the subscriber's own events and tasks.
+    events = session.exec(select(Event).where(Event.user_id == user.id, Event.start_at >= utcnow() - timedelta(days=90)).order_by(Event.start_at)).all()
     tasks = session.exec(select(Task).where(Task.assignee_id == user.id, Task.due_date.isnot(None), Task.status.notin_(["done", "cancelled"]))).all()
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Prisme CRM//FR", "CALSCALE:GREGORIAN", "X-WR-CALNAME:Prisme CRM"]
     stamp = _ics_dt(utcnow())

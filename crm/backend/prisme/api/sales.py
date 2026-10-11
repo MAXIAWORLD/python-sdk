@@ -255,6 +255,13 @@ def mark_invoice_sent(invoice_id: int, session: Session = Depends(get_session), 
 @router.post("/invoices/{invoice_id:int}/remind")
 def remind_invoice(invoice_id: int, payload: dict = Body(default={}), session: Session = Depends(get_session), user: User = Depends(require_role("member"))):
     invoice = _invoice(session, invoice_id)
+    send_reminder(session, invoice, user, payload)
+    return dump_one(session, invoice)
+
+
+def send_reminder(session: Session, invoice: Invoice, user: User | None, payload: dict[str, Any] | None = None) -> None:
+    """Email a payment reminder (PDF attached) and count it on the invoice."""
+    payload = payload or {}
     if not invoice.locked or invoice.status in ("paid", "cancelled"):
         raise HTTPException(409, "Cette facture n'est pas à relancer.")
     contact = session.get(Contact, invoice.contact_id) if invoice.contact_id else None
@@ -270,7 +277,7 @@ def remind_invoice(invoice_id: int, payload: dict = Body(default={}), session: S
         + (f"est échue depuis {late_days} jour{'s' if late_days > 1 else ''} (échéance du {pdf.fr_date(invoice.due_date)})." if late_days > 0 else f"arrive à échéance le {pdf.fr_date(invoice.due_date)}.")
         + f"\n\nNous vous remercions de bien vouloir procéder à son règlement. [Consulter la facture]({link})\n\n"
         + ("Pour rappel, tout retard de paiement entraîne l'application de pénalités de retard ainsi qu'une indemnité forfaitaire de 40 € pour frais de recouvrement (art. L441-10 du Code de commerce).\n\n" if late_days > 0 else "")
-        + f"Si le règlement a déjà été effectué, merci de ne pas tenir compte de ce message.\n\nBien cordialement,\n{user.name}"
+        + f"Si le règlement a déjà été effectué, merci de ne pas tenir compte de ce message.\n\nBien cordialement,\n{user.name if user else get_section(session, 'company').get('name') or ''}"
     )
     attachment = (f"{invoice.number}.pdf", einvoice.generate_facturx_pdf(session, invoice), "application/pdf")
     mailer.send_email(session, to=to, subject=payload.get("subject") or f"Rappel — facture {invoice.number}", body=body, attachments=[attachment], user=user, contact_id=invoice.contact_id, company_id=invoice.company_id, commit=False)
@@ -278,7 +285,6 @@ def remind_invoice(invoice_id: int, payload: dict = Body(default={}), session: S
     invoice.last_reminder_at = utcnow()
     session.add(invoice)
     session.commit()
-    return dump_one(session, invoice)
 
 
 @router.get("/invoices/{invoice_id:int}/payments")

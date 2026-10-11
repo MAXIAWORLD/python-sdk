@@ -34,6 +34,11 @@ export function nextHalfHour(from = new Date()) {
 /** Time entries as returned by the API (company and invoice references are expanded too). */
 export type TimeEntryRow = TimeEntry & { company?: Ref | null; invoice?: Ref | null };
 
+/** The entry behind a running stopwatch (started, not stopped yet). */
+export function isRunning(entry: Pick<TimeEntry, "started_at" | "ended_at">) {
+  return !!entry.started_at && !entry.ended_at;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Durations                                                                  */
 /* -------------------------------------------------------------------------- */

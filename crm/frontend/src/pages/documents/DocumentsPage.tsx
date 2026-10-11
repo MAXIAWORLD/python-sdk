@@ -9,7 +9,6 @@ import { BulkBar } from "@/components/entity/EntityBlocks";
 import { useUpload } from "@/components/entity/RelatedDocuments";
 import { Glass } from "@/components/glass/Glass";
 import { DocumentCard, docMenuItems, FileThumb, LINK_ICON, type DocActions } from "@/components/support/DocumentCard";
-import { BodyPortal } from "@/components/support/BodyPortal";
 import { DropOverlay, useFileDrop } from "@/components/support/DropOverlay";
 import { MoveDialog, RenameDialog } from "@/components/support/FileDialogs";
 import { FilePreviewSheet } from "@/components/support/FilePreviewSheet";
@@ -267,7 +266,10 @@ export default function DocumentsPage() {
         key={key ?? "__all__"}
         type="button"
         onClick={() => setParam({ folder: key })}
-        className={cn("flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left text-[13.5px] font-medium transition", active ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-black/[0.04] hover:text-fg dark:hover:bg-white/[0.06]")}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-[12px] px-2.5 py-2 text-left text-[13.5px] font-medium transition",
+          active ? "bg-accent-soft text-fg [&>svg]:text-accent" : "text-fg-2 hover:bg-black/[0.04] hover:text-fg dark:hover:bg-white/[0.06]",
+        )}
       >
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -476,32 +478,28 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      <BodyPortal>
-        <BulkBar count={selected.length} onClear={() => setSelected([])}>
-          <Button size="sm" variant="ghost" icon={<FolderInput className="size-4" />} onClick={() => setMoving(selectedDocs)}>
-            Déplacer
-          </Button>
-          <Button size="sm" variant="ghost" className="text-red-500" icon={<Trash2 className="size-4" />} onClick={() => remove(selectedDocs)}>
-            Supprimer
-          </Button>
-        </BulkBar>
-      </BodyPortal>
+      <BulkBar count={selected.length} onClear={() => setSelected([])}>
+        <Button size="sm" variant="ghost" icon={<FolderInput className="size-4" />} onClick={() => setMoving(selectedDocs)}>
+          Déplacer
+        </Button>
+        <Button size="sm" variant="ghost" className="text-red-500" icon={<Trash2 className="size-4" />} onClick={() => remove(selectedDocs)}>
+          Supprimer
+        </Button>
+      </BulkBar>
 
       <DropOverlay active={dragging} folder={currentFolder} />
-      <BodyPortal>
-        <AnimatePresence>
-          {busy && (
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              className="glass glass-strong fixed bottom-24 right-5 z-50 flex items-center gap-2.5 rounded-[16px] px-4 py-3 text-[13px] font-medium shadow-[var(--glass-shadow-lg)] lg:bottom-6"
-            >
-              <Spinner className="size-4 text-accent" /> Envoi des fichiers{currentFolder ? ` dans « ${currentFolder} »` : ""}…
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </BodyPortal>
+      <AnimatePresence>
+        {busy && (
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 20, opacity: 0 }}
+            className="glass glass-strong fixed bottom-24 right-5 z-50 flex items-center gap-2.5 rounded-[16px] px-4 py-3 text-[13px] font-medium shadow-[var(--glass-shadow-lg)] lg:bottom-6"
+          >
+            <Spinner className="size-4 text-accent" /> Envoi des fichiers{currentFolder ? ` dans « ${currentFolder} »` : ""}…
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <FilePreviewSheet doc={previewDoc} onClose={() => setPreviewId(null)} onRename={(d) => setRenaming(d)} onMove={(d) => setMoving([d])} onDelete={(d) => remove([d])} />
       <RenameDialog doc={renaming} onClose={() => setRenaming(null)} />

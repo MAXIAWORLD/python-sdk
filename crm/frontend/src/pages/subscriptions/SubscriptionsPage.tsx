@@ -1,4 +1,4 @@
-import { Ban, CirclePause, CirclePlay, Download, MoreHorizontal, PanelRightOpen, Pencil, Plus, Receipt, Repeat, RotateCcw, SlidersHorizontal, Sparkles, Zap } from "lucide-react";
+import { Ban, CirclePause, CirclePlay, Download, MoreHorizontal, PanelRightOpen, Pencil, Plus, Receipt, Repeat, RotateCcw, SlidersHorizontal, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { DataTable, type Column } from "@/components/data/DataTable";
@@ -58,7 +58,7 @@ export default function SubscriptionsPage() {
   const ls = useListState({ filters: ["status", "interval", "company_id"], defaultSort: "current_period_end" });
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, isLoading, isFetching } = useList<Subscription>("subscriptions", ls.params);
-  const { data: metrics, isLoading: metricsLoading } = useApi<SubscriptionMetrics>(["subscription-metrics"], "/subscriptions/metrics");
+  const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = useApi<SubscriptionMetrics>(["subscription-metrics"], "/subscriptions/metrics");
   const overview = useList<Subscription>("subscriptions", { limit: 1000, sort: "id" });
   const actions = useSubscriptionActions();
   const listRef = useRef<HTMLDivElement>(null);
@@ -90,6 +90,9 @@ export default function SubscriptionsPage() {
   /* Side sheet, deep-linkable with ?abonnement=<id> */
   const sheetId = Number(searchParams.get("abonnement")) || null;
   const [sheetSeed, setSheetSeed] = useState<Subscription | undefined>(undefined);
+  /* Keep the last record while the sheet animates out */
+  const [shownId, setShownId] = useState<number | null>(sheetId);
+  if (sheetId && sheetId !== shownId) setShownId(sheetId);
   const openSheet = (sub: Subscription) => {
     setSheetSeed(sub);
     setSearchParams((prev) => {
@@ -319,12 +322,24 @@ export default function SubscriptionsPage() {
       />
 
       <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-          <MrrHero metrics={metrics} loading={metricsLoading} />
-          <MetricTiles metrics={metrics} extras={derived.extras} onFilter={(status) => focusList(() => ls.setFilter("status", status))} />
-        </div>
-
-        <MovementsRow metrics={metrics} onPlan={(plan) => focusList(() => ls.setQ(plan))} />
+        {metricsError ? (
+          <Glass radius="xl">
+            <EmptyState
+              icon={<TrendingUp className="size-6" />}
+              title="Indicateurs momentanément indisponibles"
+              description="Le calcul du MRR, du churn et du NRR n'a pas abouti. La liste des abonnements reste consultable ci-dessous."
+              action={<Button onClick={() => refetchMetrics()}>Réessayer</Button>}
+            />
+          </Glass>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+              <MrrHero metrics={metrics} loading={metricsLoading} />
+              <MetricTiles metrics={metrics} extras={derived.extras} onFilter={(status) => focusList(() => ls.setFilter("status", status))} />
+            </div>
+            <MovementsRow metrics={metrics} onPlan={(plan) => focusList(() => ls.setQ(plan))} />
+          </>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <RenewalsPanel rows={derived.renewals} loading={overview.isLoading} onOpen={openSheet} />
@@ -381,8 +396,8 @@ export default function SubscriptionsPage() {
       </div>
 
       <SubscriptionSheet
-        id={sheetId}
-        initial={sheetSeed?.id === sheetId ? sheetSeed : rows.find((r) => r.id === sheetId)}
+        id={shownId}
+        initial={sheetSeed?.id === shownId ? sheetSeed : rows.find((r) => r.id === shownId)}
         open={!!sheetId}
         onOpenChange={(o) => !o && closeSheet()}
         actions={actions}

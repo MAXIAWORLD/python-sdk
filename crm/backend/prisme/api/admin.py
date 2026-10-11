@@ -165,11 +165,14 @@ def export_resource(resource: str, request: Request, session: Session = Depends(
     for item in data["items"]:
         row = {}
         for key, value in item.items():
-            if isinstance(value, dict):
-                if "name" in value:
-                    row[key] = value.get("name")
-                continue
-            row[key] = value
+            if isinstance(value, dict) and f"{key}_id" in item:
+                row[key] = value.get("name")  # expanded relation -> its label
+            elif isinstance(value, list) and all(isinstance(v, (str, int, float)) for v in value):
+                row[key] = ", ".join(str(v) for v in value)
+            elif isinstance(value, (dict, list)):
+                row[key] = json.dumps(value, ensure_ascii=False, default=str)
+            else:
+                row[key] = value
         flat.append(row)
     audit.record(session, "export", user.id, resource, None, f"Export CSV ({len(flat)} lignes)")
     session.commit()
@@ -202,6 +205,20 @@ def automation_catalog(user: User = Depends(get_current_user)):
     return {"triggers": automation_engine.TRIGGERS, "actions": automation_engine.ACTIONS}
 
 
+# Test runs use a record that is in the state the trigger describes (e.g. an overdue invoice for "invoice.overdue").
+TEST_SAMPLE_FILTERS: dict[str, list[tuple[str, str]]] = {
+    "invoice.issued": [("locked", "true")],
+    "invoice.paid": [("status", "paid")],
+    "invoice.overdue": [("status", "overdue")],
+    "quote.viewed": [("status", "viewed")],
+    "quote.accepted": [("status", "accepted")],
+    "quote.declined": [("status", "declined")],
+    "deal.won": [("status", "won")],
+    "deal.lost": [("status", "lost")],
+    "task.completed": [("status", "done")],
+}
+
+
 @router.post("/automations/{automation_id:int}/test")
 def automation_test(automation_id: int, payload: dict = Body(default={}), session: Session = Depends(get_session), user: User = Depends(require_role("manager"))):
     automation = session.get(Automation, automation_id)
@@ -213,7 +230,9 @@ def automation_test(automation_id: int, payload: dict = Body(default={}), sessio
         entity = automation_engine.trigger_entity(event)
         resource = automation_engine.ENTITY_RESOURCE.get(entity or "")
         if resource:
-            latest = RESOURCES[resource].list(session, [("limit", 1)], user)["items"]
+            wanted = [("sort", "-updated_at"), ("limit", 1)]
+            latest = RESOURCES[resource].list(session, wanted + TEST_SAMPLE_FILTERS.get(event, []), user)["items"]
+            latest = latest or RESOURCES[resource].list(session, wanted, user)["items"]
             if latest:
                 sample = {"id": latest[0]["id"], "data": latest[0], "contact_id": latest[0].get("id") if entity == "contact" else None}
     run = automation_engine.execute(session, automation, event, sample, user.id, dry_run=not payload.get("live"))

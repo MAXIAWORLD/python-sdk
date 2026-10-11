@@ -23,7 +23,7 @@ import { DueChip, PriorityFlag, TaskIndicators } from "@/components/work/TaskCar
 import { TaskCheck } from "@/components/work/TaskCheck";
 import { TaskSheet, useTaskParam } from "@/components/work/TaskSheet";
 import { TimeEntryDialog, type TimeEntryDefaults } from "@/components/work/TimeEntryDialog";
-import { clock, hours, PRIORITY_COLOR, PRIORITY_RANK, type TimeEntryRow } from "@/components/work/work-utils";
+import { clock, hours, isRunning, PRIORITY_COLOR, PRIORITY_RANK, type TimeEntryRow } from "@/components/work/work-utils";
 import { api } from "@/lib/api";
 import { BILLING_MODES, labelOf, PRIORITY, PROJECT_HEALTH, PROJECT_STATUS, TASK_STATUS, type Option } from "@/lib/constants";
 import { date, money, moneyShort, percent, plural } from "@/lib/format";
@@ -99,7 +99,11 @@ function KpiRow({ project, stats }: { project: Project; stats?: ProjectStats }) 
       <Kpi label="Temps passé" icon={<Clock3 className="size-3.5" />} value={hours(stats.hours)} sub={stats.budget_hours ? `sur ${hours(stats.budget_hours)} budgétées · ${percent(budgetPct, 0)}` : "Aucun budget temps"} accent="linear-gradient(135deg,#5b6cff,#22d3ee)">
         {budgetPct !== null && <Progress value={Math.min(budgetPct, 100)} height={6} tone={over ? "linear-gradient(90deg,#ff9f0a,#ff453a)" : undefined} />}
       </Kpi>
-      <Kpi label="À facturer" icon={<Receipt className="size-3.5" />} value={moneyShort(stats.unbilled_value)} sub={`${hours(stats.unbilled_hours)} facturables non facturées`} accent="linear-gradient(135deg,#ff9f0a,#ff375f)" />
+      {project.billing_mode === "fixed" ? (
+        <Kpi label="Reste à facturer" icon={<Receipt className="size-3.5" />} value={moneyShort(Math.max(0, project.budget_amount - stats.invoiced))} sub={`sur un forfait de ${moneyShort(project.budget_amount)}`} accent="linear-gradient(135deg,#ff9f0a,#ff375f)" />
+      ) : (
+        <Kpi label="À facturer" icon={<Receipt className="size-3.5" />} value={moneyShort(stats.unbilled_value)} sub={`${hours(stats.unbilled_hours)} facturables non facturées`} accent="linear-gradient(135deg,#ff9f0a,#ff375f)" />
+      )}
       <Kpi label="Facturé HT" icon={<FileText className="size-3.5" />} value={moneyShort(stats.invoiced)} sub={project.budget_amount ? `sur ${moneyShort(project.budget_amount)} de budget` : "Factures émises du projet"} accent="linear-gradient(135deg,#8b5cf6,#ec4899)">
         {project.budget_amount > 0 && <Progress value={(stats.invoiced / project.budget_amount) * 100} height={6} tone="linear-gradient(90deg,#8b5cf6,#ec4899)" />}
       </Kpi>
@@ -219,7 +223,19 @@ function TimeTab({ project, entries, loading, onAdd, onEdit }: { project: Projec
         </div>
       ),
     },
-    { key: "minutes", header: "Durée", align: "right", cell: (e) => <span className="font-semibold tabular">{clock(e.minutes)}</span> },
+    {
+      key: "minutes",
+      header: "Durée",
+      align: "right",
+      cell: (e) =>
+        isRunning(e) ? (
+          <Badge tone="red" dot>
+            En cours
+          </Badge>
+        ) : (
+          <span className="font-semibold tabular">{clock(e.minutes)}</span>
+        ),
+    },
     {
       key: "state",
       header: "Facturation",
@@ -317,6 +333,7 @@ export default function ProjectDetail() {
   const openCount = taskList.filter((t) => t.status !== "done" && t.status !== "cancelled").length;
   const tracking = !!project && timer.entry?.project_id === project.id;
   const billable = project?.billing_mode !== "non_billable";
+  const billsTime = project?.billing_mode === "time" || project?.billing_mode === "retainer";
 
   const invoiceTime = async () => {
     if (!project || !stats) return;
@@ -348,8 +365,7 @@ export default function ProjectDetail() {
       confirmLabel: "Supprimer définitivement",
     });
     if (!ok) return;
-    await remove.mutateAsync(project.id);
-    navigate("/projects");
+    remove.mutate(project.id, { onSuccess: () => navigate("/projects") });
   };
 
   const toggleTimer = () => {
@@ -423,7 +439,7 @@ export default function ProjectDetail() {
               <Button variant={tracking ? "danger" : "glass"} icon={tracking ? <Square className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />} loading={timer.start.isPending || timer.stop.isPending} onClick={toggleTimer}>
                 {tracking ? "Arrêter" : "Chronométrer"}
               </Button>
-              {billable && (
+              {billsTime && (
                 <Button variant="primary" icon={<Receipt className="size-4" />} loading={invoicing} disabled={!stats?.unbilled_hours} onClick={invoiceTime} title={stats?.unbilled_hours ? undefined : "Aucun temps facturable non facturé"}>
                   Facturer le temps{stats?.unbilled_value ? ` · ${moneyShort(stats.unbilled_value)}` : ""}
                 </Button>
@@ -437,6 +453,7 @@ export default function ProjectDetail() {
                 items={[
                   { label: "Modifier", icon: <Pencil className="size-4" />, onSelect: () => setEditing(true) },
                   { label: "Saisir du temps", icon: <Clock3 className="size-4" />, onSelect: () => setTimeDialog({ defaults: { project_id: project.id, project_name: project.name } }) },
+                  ...(project.billing_mode === "fixed" ? [{ label: "Facturer le temps passé", icon: <Receipt className="size-4" />, disabled: !stats?.unbilled_hours, onSelect: invoiceTime }] : []),
                   { separator: true, label: "" },
                   { label: "Supprimer", danger: true, icon: <Trash2 className="size-4" />, onSelect: destroy },
                 ]}

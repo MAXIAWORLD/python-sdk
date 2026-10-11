@@ -158,6 +158,12 @@ export default function InboxPage() {
     }
   };
 
+  /** After archiving / deleting: open the next message (or the previous one at the end of the list). */
+  const selectNeighbour = (m: Mail) => {
+    const index = rows.findIndex((r) => r.id === m.id);
+    select(index < 0 ? null : (rows[index + 1] ?? rows[index - 1] ?? null));
+  };
+
   // Expanded references only: an id can outlive its record (e.g. a deleted ticket).
   const contextOf = (m: Mail): EmailContext => ({ contact_id: m.contact?.id ?? null, company_id: m.company?.id ?? null, deal_id: m.deal?.id ?? null, ticket_id: m.ticket?.id ?? null });
 
@@ -167,7 +173,7 @@ export default function InboxPage() {
 
   const archive = (m: Mail) => {
     const restore = m.folder === "archive";
-    if (folderId !== "all" && folderId !== "starred") move(1);
+    if (folderId !== "all" && folderId !== "starred") selectNeighbour(m);
     patchMail(m, { folder: restore ? (m.direction === "in" ? "inbox" : "sent") : "archive" }, restore ? "Email remis dans la boîte de réception" : "Email archivé");
   };
 
@@ -176,7 +182,7 @@ export default function InboxPage() {
     try {
       await api.delete(`/emails/${m.id}`);
       toast.success("Email supprimé");
-      select(null);
+      selectNeighbour(m);
       qc.invalidateQueries({ queryKey: ["emails"] });
     } catch (e) {
       toastError(e);
@@ -308,7 +314,7 @@ export default function InboxPage() {
                   onClick={() => changeFolder(f.id)}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-[12px] px-2.5 py-2 text-left text-[13.5px] font-medium transition",
-                    active ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-black/[0.04] hover:text-fg dark:hover:bg-white/[0.06]",
+                    active ? "bg-accent-soft text-fg [&>svg]:text-accent" : "text-fg-2 hover:bg-black/[0.04] hover:text-fg dark:hover:bg-white/[0.06]",
                   )}
                 >
                   <f.icon className={cn("size-4 shrink-0", f.id === "starred" && active && "fill-current")} />

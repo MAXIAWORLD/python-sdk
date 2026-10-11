@@ -226,7 +226,7 @@ def reports(session: Session, start: date | None = None, end: date | None = None
     products = sorted(({"name": k[:60], "revenue": round(v, 2)} for k, v in by_product.items()), key=lambda x: -x["revenue"])[:10]
 
     users = {u.id: u for u in session.exec(select(User)).all()}
-    deals = session.exec(select(Deal).where(Deal.created_at >= _dt(start))).all()
+    deals = session.exec(select(Deal).where(Deal.created_at >= _dt(start), Deal.created_at < _dt(end))).all()
     owners: dict[int | None, dict[str, Any]] = {}
     for d in deals:
         o = owners.setdefault(d.owner_id, {"owner_id": d.owner_id, "name": users[d.owner_id].name if d.owner_id in users else "Non assigné", "won": 0, "lost": 0, "open": 0, "won_value": 0.0})
@@ -256,13 +256,13 @@ def reports(session: Session, start: date | None = None, end: date | None = None
         per_project[e.project_id] += e.minutes / 60
     project_names = {p.id: p.name for p in session.exec(select(Project)).all()}
 
-    tickets = session.exec(select(Ticket).where(Ticket.created_at >= _dt(start))).all()
+    tickets = session.exec(select(Ticket).where(Ticket.created_at >= _dt(start), Ticket.created_at < _dt(end))).all()
     first_resp = [(t.first_response_at - t.created_at).total_seconds() / 3600 for t in tickets if t.first_response_at and t.created_at]
     resolution = [(t.resolved_at - t.created_at).total_seconds() / 3600 for t in tickets if t.resolved_at and t.created_at]
     csat = [t.satisfaction for t in tickets if t.satisfaction]
 
     win_loss_by_month: dict[str, dict[str, float]] = defaultdict(lambda: {"won": 0, "lost": 0, "won_value": 0.0})
-    for d in session.exec(select(Deal).where(Deal.closed_at >= _dt(start))).all():
+    for d in session.exec(select(Deal).where(Deal.closed_at >= _dt(start), Deal.closed_at < _dt(end))).all():
         if not d.closed_at:
             continue
         key = f"{d.closed_at.year}-{d.closed_at.month:02d}"

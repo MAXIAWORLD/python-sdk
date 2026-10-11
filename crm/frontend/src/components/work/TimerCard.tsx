@@ -42,7 +42,7 @@ export function Stopwatch({ seconds, running, className }: { seconds: number; ru
     <div className={cn("flex items-center font-semibold leading-none tracking-[-0.04em] tabular", running ? "text-fg" : "text-fg-3", className)} role="timer" aria-live="off" aria-label={text}>
       {text.split("").map((ch, i) =>
         ch === ":" ? (
-          <span key={i} className={cn("mx-[0.02em] -translate-y-[0.06em] text-fg-3", running && "animate-[caret_1s_steps(1)_infinite]")}>
+          <span key={i} className={cn("mx-[0.02em] -translate-y-[0.06em] text-fg-3", running && "animate-pulse")}>
             :
           </span>
         ) : (
@@ -144,7 +144,7 @@ export function TimerCard({ className }: { className?: string }) {
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-60" />
                   <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
                 </span>
-                <span className="text-red-500">En cours</span>
+                <span className="text-red-500 dark:text-red-400">En cours</span>
                 <span className="font-medium normal-case tracking-normal">· démarré à {time(entry?.started_at)}</span>
               </>
             ) : (

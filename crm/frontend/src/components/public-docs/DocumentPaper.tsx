@@ -4,7 +4,7 @@ import { Glass } from "@/components/glass/Glass";
 import { money } from "@/lib/format";
 import type { LineItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatSiren, legalIdentity, quantityLabel, vatLabel, websiteHref } from "./doc-utils";
+import { formatSiren, legalIdentity, quantityLabel, rateLabel, websiteHref } from "./doc-utils";
 import type { BuyerParty, SellerParty } from "./types";
 
 export interface TotalRow {
@@ -126,8 +126,8 @@ function LinesTable({ lines, currency }: { lines: LineItem[]; currency: string }
                 </td>
                 <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{quantityLabel(l.quantity, l.unit)}</td>
                 <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{money(l.unit_price, currency)}</td>
-                {showDiscount && <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{l.discount ? `−${vatLabel(l.discount)}` : "—"}</td>}
-                <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{vatLabel(l.vat_rate ?? 0)}</td>
+                {showDiscount && <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{l.discount ? `−${rateLabel(l.discount)}` : "—"}</td>}
+                <td className="whitespace-nowrap border-t border-[var(--hairline)] px-3 py-3 text-right tabular text-fg-2">{rateLabel(l.vat_rate ?? 0)}</td>
                 <td className="whitespace-nowrap border-t border-[var(--hairline)] px-4 py-3 text-right font-semibold tabular">{money(l.total, currency)}</td>
               </tr>
             );
@@ -160,7 +160,7 @@ function LinesTable({ lines, currency }: { lines: LineItem[]; currency: string }
               {l.details && <div className="mt-0.5 whitespace-pre-line text-[12.5px] text-fg-3">{l.details}</div>}
               <div className="mt-1 text-[12.5px] text-fg-3 tabular">
                 {quantityLabel(l.quantity, l.unit)} × {money(l.unit_price, currency)}
-                {l.discount ? ` · remise ${vatLabel(l.discount)}` : ""} · TVA {vatLabel(l.vat_rate ?? 0)}
+                {l.discount ? ` · remise ${rateLabel(l.discount)}` : ""} · TVA {rateLabel(l.vat_rate ?? 0)}
               </div>
             </div>
           );

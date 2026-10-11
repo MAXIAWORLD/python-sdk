@@ -14,19 +14,19 @@ const MAX_CHIPS = 3;
 function DayPopover({ day, items, onOpen, onCreate, children }: { day: Date; items: CalendarItem[]; onOpen: (it: CalendarItem) => void; onCreate: (day: Date) => void; children: ReactElement }) {
   return (
     <Popover trigger={children} width={340} align="center">
-      {/* Portalled content still bubbles through the React tree: keep clicks away from the day cell. */}
+      {/* Portalled content still bubbles through the React tree: keep its clicks away from the day cell. */}
       <div onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--hairline)] px-4 py-3">
-        <span className="text-[14px] font-semibold first-letter:uppercase">{date(day, "EEEE d MMMM")}</span>
-        <button type="button" onClick={() => onCreate(day)} className="inline-flex items-center gap-1 rounded-[9px] px-2 py-1 text-[12px] font-medium text-accent hover:bg-accent-soft">
-          <Plus className="size-3.5" /> Événement
-        </button>
-      </div>
-      <div className="max-h-[320px] overflow-y-auto p-1.5">
-        {items.map((it) => (
-          <ItemRow key={it.id} item={it} onOpen={onOpen} right={<span />} />
-        ))}
-      </div>
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--hairline)] px-4 py-3">
+          <span className="text-[14px] font-semibold first-letter:uppercase">{date(day, "EEEE d MMMM")}</span>
+          <button type="button" onClick={() => onCreate(day)} className="inline-flex items-center gap-1 rounded-[9px] px-2 py-1 text-[12px] font-medium text-accent hover:bg-accent-soft">
+            <Plus className="size-3.5" /> Événement
+          </button>
+        </div>
+        <div className="max-h-[320px] overflow-y-auto p-1.5">
+          {items.map((it) => (
+            <ItemRow key={it.id} item={it} onOpen={onOpen} showOwner={false} />
+          ))}
+        </div>
       </div>
     </Popover>
   );

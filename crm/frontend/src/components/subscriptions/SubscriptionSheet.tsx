@@ -199,7 +199,7 @@ export function SubscriptionSheet({ id, initial, open, onOpenChange, actions, ha
           <div className="grid grid-cols-3 gap-2">
             <Figure label={billable ? "MRR" : "MRR potentiel"} value={moneyShort(billable ? sub.mrr : monthlyValue(sub))} sub={billable ? "revenu mensuel" : sub.status === "trialing" ? "à la conversion" : "hors MRR"} />
             <Figure label={`Montant / ${unit}`} value={moneyShort(periodAmount(sub))} sub={`${sub.quantity} × ${money(sub.amount)} HT`} />
-            <Figure label="ARR" value={moneyShort((billable ? sub.mrr : monthlyValue(sub)) * 12)} sub={`TVA ${number(sub.vat_rate, sub.vat_rate % 1 ? 1 : 0)} % en sus`} />
+            <Figure label={billable ? "ARR" : "ARR potentiel"} value={moneyShort((billable ? sub.mrr : monthlyValue(sub)) * 12)} sub={`TVA ${number(sub.vat_rate, sub.vat_rate % 1 ? 1 : 0)} % en sus`} />
           </div>
 
           <PeriodBar sub={sub} />
@@ -280,7 +280,7 @@ export function SubscriptionSheet({ id, initial, open, onOpenChange, actions, ha
               disabled={sub.status === "canceled" || actions.isBusy("auto", sub)}
               onChange={(v) => actions.toggleAutoInvoice(sub, v)}
               label={<span className="text-[13.5px]">Facturation automatique</span>}
-              description="Une facture brouillon est créée chaque jour d'échéance, à vérifier puis émettre."
+              description="À chaque échéance, une facture brouillon est créée : il ne reste qu'à la vérifier puis à l'émettre."
             />
           </div>
 

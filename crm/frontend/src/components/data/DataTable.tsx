@@ -89,7 +89,7 @@ export function DataTable<T extends { id: number }>({ columns, rows, loading, so
                   <tr key={i}>
                     {selectable && <td className="border-b border-[var(--hairline)] py-3 pl-4" />}
                     {columns.map((col) => (
-                      <td key={col.key} className={cn("border-b border-[var(--hairline)] px-3 py-3.5 first:pl-5", col.hideOnMobile && "hidden md:table-cell")}>
+                      <td key={col.key} className={cn("border-b border-[var(--hairline)] px-3 py-3.5 first:pl-5", col.hideOnMobile && "hidden md:table-cell", col.className)}>
                         <Skeleton className="h-3.5 w-[70%]" />
                       </td>
                     ))}

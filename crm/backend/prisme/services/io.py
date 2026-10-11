@@ -235,8 +235,18 @@ def backup(session: Session) -> bytes:
         if model is None:
             continue
         rows = session.exec(select(model)).all()
-        data[table.name] = [jsonable(dump(r, exclude=set())) if hasattr(r, "__table__") else jsonable(r) for r in rows]
+        data[table.name] = [_redact(jsonable(dump(r, exclude=set()))) for r in rows]
     return json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
+
+
+SECRET_KEYS = {"password_hash", "token_hash", "api_key_enc", "secret"}
+
+
+def _redact(row: Any) -> Any:
+    """Mask credentials in an exported row (including secrets nested in settings)."""
+    if isinstance(row, dict):
+        return {k: ("[masqué]" if v and (k in SECRET_KEYS or k.endswith(("password", "api_key"))) else _redact(v)) for k, v in row.items()}
+    return row
 
 
 def _model_for(table_name: str) -> Any:

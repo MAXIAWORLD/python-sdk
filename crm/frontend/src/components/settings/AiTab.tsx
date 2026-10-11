@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Cpu, EyeOff, KeyRound, ListRestart, MoreHorizontal, Pencil, Plug, Plus, ServerCog, ShieldCheck, Sparkles, Star, Trash2, XCircle, Zap } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { IrisOrb, useAiStatus } from "@/components/ai/ChatView";
@@ -16,7 +16,7 @@ import { errorMessage, toastError, useInvalidate, useList } from "@/lib/hooks";
 import type { AIProvider } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { can, useAuth } from "@/stores/auth";
-import { Callout, ChoiceCards, FormGrid, PasswordInput, ReadOnlyNotice, SaveBar, SettingsCard, SwitchField, TabHeader, TextareaField, TextField, useSectionForm } from "./shared";
+import { Callout, ChoiceCards, FieldGroup, FormGrid, PasswordInput, ReadOnlyNotice, SaveBar, SettingsCard, SwitchField, TabHeader, TextareaField, TextField, useSectionForm } from "./shared";
 import { isHttpUrl } from "./validators";
 
 interface Preset {
@@ -107,6 +107,7 @@ function ProviderDialog({ open, onOpenChange, provider, presets, isFirst }: { op
   const [saving, setSaving] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
   const [lastOpen, setLastOpen] = useState(false);
+  const modelId = useId();
 
   if (open !== lastOpen) {
     setLastOpen(open);
@@ -255,8 +256,9 @@ function ProviderDialog({ open, onOpenChange, provider, presets, isFirst }: { op
             <Field label="Nom affiché" required>
               <Input value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder="Claude (équipe)" />
             </Field>
-            <Field
+            <FieldGroup
               label="Modèle par défaut"
+              htmlFor={modelId}
               required
               action={
                 provider ? (
@@ -277,11 +279,12 @@ function ProviderDialog({ open, onOpenChange, provider, presets, isFirst }: { op
                   }}
                   options={[...models.map((m) => ({ value: m, label: m })), { value: "__custom__", label: "Autre modèle…" }]}
                   placeholder="Choisir un modèle"
+                  id={modelId}
                 />
               ) : (
-                <Input value={draft.default_model} onChange={(e) => set("default_model", e.target.value)} placeholder="identifiant-du-modele" className="font-mono" />
+                <Input id={modelId} value={draft.default_model} onChange={(e) => set("default_model", e.target.value)} placeholder="identifiant-du-modele" className="font-mono" />
               )}
-            </Field>
+            </FieldGroup>
             <Field
               label={needsKey ? "Clé API" : "Clé API (facultative)"}
               className="sm:col-span-2"

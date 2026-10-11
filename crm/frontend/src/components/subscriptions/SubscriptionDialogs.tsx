@@ -40,8 +40,8 @@ function SubscriptionChip({ sub }: { sub: Subscription }) {
         </div>
       </div>
       <div className="text-right">
-        <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-3">MRR</div>
-        <div className="text-[14px] font-semibold tabular">{money(sub.mrr)}</div>
+        <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-3">{isBillable(sub.status) ? "MRR" : "MRR potentiel"}</div>
+        <div className="text-[14px] font-semibold tabular">{money(isBillable(sub.status) ? sub.mrr : monthlyValue(sub))}</div>
       </div>
     </div>
   );
@@ -215,7 +215,7 @@ export function CancelDialog({ sub, open, onOpenChange }: { sub: Subscription | 
   const effective = when === "today" ? isoDate() : when === "period_end" && periodEnd ? periodEnd : custom;
   const motive = [reason, details.trim()].filter(Boolean).join(" — ");
   const missingReason = !motive;
-  const lost = sub.mrr || monthlyValue(sub);
+  const billable = isBillable(sub.status);
 
   const submit = async () => {
     setTouched(true);
@@ -276,9 +276,15 @@ export function CancelDialog({ sub, open, onOpenChange }: { sub: Subscription | 
             {when === "custom" && <Input type="date" value={custom} onChange={(e) => setCustom(e.target.value)} className="sm:w-[170px]" aria-label="Date d'effet" />}
           </div>
         </GroupField>
-        <div className="rounded-[16px] bg-red-500/[0.07] p-3.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-red-500/20">
-          <b className="font-semibold text-red-600 dark:text-red-400">Impact : {signed(-lost, moneyShort)} de MRR</b> ({signed(-lost * 12, moneyShort)} d'ARR). L'abonnement passe immédiatement au statut « Résilié » ; le churn est daté du {date(effective)}.
-        </div>
+        {billable ? (
+          <div className="rounded-[16px] bg-red-500/[0.07] p-3.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-red-500/20">
+            <b className="font-semibold text-red-600 dark:text-red-400">Impact : {signed(-sub.mrr, moneyShort)} de MRR</b> ({signed(-sub.mrr * 12, moneyShort)} d'ARR). L'abonnement passe immédiatement au statut « Résilié » ; le churn est daté du {date(effective)}.
+          </div>
+        ) : (
+          <div className="rounded-[16px] bg-black/[0.03] p-3.5 text-[12.5px] text-fg-2 ring-1 ring-inset ring-[var(--hairline)] dark:bg-white/[0.04]">
+            L'abonnement n'est pas facturé actuellement ({sub.status === "trialing" ? "essai" : "en pause"}) : sa résiliation n'affecte pas le MRR. Il passe immédiatement au statut « Résilié ».
+          </div>
+        )}
       </div>
     </Dialog>
   );

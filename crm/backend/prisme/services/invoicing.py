@@ -21,7 +21,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ..models import Activity, Company, Contact, Invoice, Payment, Quote, Setting, User, today, utcnow
+from ..models import Activity, Company, Contact, Invoice, Payment, Quote, Setting, Ticket, User, today, utcnow
 from ..serialize import iso, jsonable
 from . import audit, totals
 from .events import emit
@@ -62,6 +62,13 @@ def next_quote_number(session: Session) -> str:
 def next_ticket_number(session: Session) -> str:
     with _number_lock:
         seq = _next_counter(session, "ticket")
+        numbers = session.exec(select(Ticket.number).where(Ticket.number.like("TCK-%"))).all()
+        highest = max((int(n[4:]) for n in numbers if n and n[4:].isdigit()), default=0)
+        if seq <= highest:  # tickets created outside the counter (import, demo data)
+            seq = highest + 1
+            row = session.get(Setting, "counters")
+            row.value = {**dict(row.value), "ticket": seq}
+            session.add(row)
     return f"TCK-{seq:05d}"
 
 

@@ -7,10 +7,10 @@ import logging
 from datetime import timedelta
 
 import anyio
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from ..db import session_scope
-from ..models import Campaign, Contact, Event, Notification, Setting, Subscription, Task, User, now_local, today, utcnow
+from ..models import Campaign, Contact, Event, Invoice, Notification, Quote, Setting, Subscription, Task, User, now_local, today, utcnow
 from . import automation_engine, invoicing, mailer, rgpd
 from .listeners import notify
 from .settings import get_section
@@ -80,12 +80,56 @@ def tick(minute: int) -> None:
         for campaign in due:
             try:
                 send_campaign_now(session, campaign, None)
-            except Exception:  # noqa: BLE001
-                log.exception("Envoi programmé de la campagne %s impossible", campaign.id)
+            except Exception as exc:  # noqa: BLE001 - pause instead of retrying every minute
+                session.rollback()
+                reason = getattr(exc, "detail", None) or str(exc)
+                log.warning("Envoi programmé de la campagne %s impossible : %s", campaign.id, reason)
+                campaign = session.get(Campaign, campaign.id)
+                if campaign is not None:
+                    campaign.status = "paused"
+                    campaign.stats = {**(campaign.stats or {}), "error": str(reason)[:300]}
+                    session.add(campaign)
+                    notify(session, campaign.owner_id, f"⚠️ Campagne « {campaign.name} » non envoyée", str(reason)[:200], f"/campaigns/{campaign.id}", "warning")
+                    session.commit()
 
 
-def _daily(session) -> None:
-    from ..api.sales import invoice_subscription  # local import: the API layer imports this module
+def _automatic_reminders(session: Session) -> None:
+    """Payment reminders on the configured days of delay (Paramètres › Facturation, opt-in)."""
+    from ..api.sales import send_reminder  # local import: the API layer imports this module
+
+    billing = get_section(session, "billing")
+    if not billing.get("auto_reminders") or not mailer.smtp_ready(session):
+        return
+    steps = sorted({int(d) for d in billing.get("reminder_days") or [] if str(d).strip().isdigit()})
+    if not steps:
+        return
+    overdue = session.exec(select(Invoice).where(Invoice.locked == True, Invoice.kind != "credit_note", Invoice.status.in_(["issued", "sent", "partial", "overdue"]), Invoice.due_date < today())).all()  # noqa: E712
+    for invoice in overdue:
+        sent = invoice.reminders_sent or 0
+        if sent >= len(steps) or (today() - invoice.due_date).days < steps[sent] or (invoice.balance_due or 0) <= 0:
+            continue
+        try:
+            send_reminder(session, invoice, session.get(User, invoice.owner_id) if invoice.owner_id else None)
+        except Exception:  # noqa: BLE001 - one bad address must not stop the others
+            session.rollback()
+            log.warning("Relance automatique de la facture %s impossible", invoice.number, exc_info=True)
+
+
+def _daily(session: Session) -> None:
+    from ..api.sales import invoice_subscription  # local imports: the API layer imports this module
+    from ..resources import RESOURCES
+
+    _automatic_reminders(session)
+
+    # Subscriptions whose cancellation date has come
+    for sub in session.exec(select(Subscription).where(Subscription.status != "canceled", Subscription.canceled_at.isnot(None), Subscription.canceled_at <= today())).all():
+        RESOURCES["subscriptions"].update(session, sub.id, {"status": "canceled"}, None)
+
+    # Quotes past their validity date
+    for quote in session.exec(select(Quote).where(Quote.status.in_(["sent", "viewed"]), Quote.valid_until < today())).all():
+        quote.status = "expired"
+        session.add(quote)
+    session.commit()
 
     # Tasks due today -> notification per assignee
     tasks = session.exec(select(Task).where(Task.due_date == today(), Task.status.notin_(["done", "cancelled"]))).all()

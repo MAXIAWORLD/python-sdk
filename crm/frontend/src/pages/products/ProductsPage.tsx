@@ -73,7 +73,7 @@ function MarginInfo({ product, compact }: { product: Product; compact?: boolean 
   if (!m)
     return (
       <Tooltip content="Renseignez le coût de revient pour calculer la marge">
-        <span className="text-[12.5px] text-fg-3">{compact ? "Marge —" : "—"}</span>
+        <span className="text-[12.5px] text-fg-3">—</span>
       </Tooltip>
     );
   const tip = `Taux de marque ${m.markup === null ? "—" : percent(m.markup, 1)} (marge / prix HT) · taux de marge ${m.rate === null ? "—" : percent(m.rate, 1)} (marge / coût) · coût ${money(product.cost)}`;
@@ -152,11 +152,8 @@ function ProductCard({
             <Badge size="xs">TVA {vatLabel(p.vat_rate)}</Badge>
             {p.category && <span className="truncate text-[11.5px] text-fg-3">· {p.category}</span>}
           </div>
-          {p.cost !== null && p.cost !== undefined && (
-            <div className="mt-2">
-              <MarginInfo product={p} compact />
-            </div>
-          )}
+          {/* Fixed slot so prices stay aligned across a row, with or without a known cost */}
+          <div className="mt-2 h-5">{p.cost !== null && p.cost !== undefined && <MarginInfo product={p} compact />}</div>
         </div>
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--hairline)] pt-3">
           <Stop className="flex items-center gap-2">

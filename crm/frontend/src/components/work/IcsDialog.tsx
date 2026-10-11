@@ -26,7 +26,7 @@ export function IcsDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   const confirm = useConfirm();
 
   const create = useMutation({
-    mutationFn: () => api.post<{ token: string; item: ApiToken }>("/auth/tokens", { name: TOKEN_NAME, scopes: ["api"] }),
+    mutationFn: () => api.post<{ token: string; item: ApiToken }>("/auth/tokens", { name: TOKEN_NAME, scopes: ["ics"] }),
     onSuccess: (res) => {
       setUrl(`${window.location.origin}/api/calendar.ics?key=${encodeURIComponent(res.token)}`);
       setCopied(false);
