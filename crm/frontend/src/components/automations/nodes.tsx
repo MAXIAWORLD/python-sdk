@@ -459,7 +459,7 @@ export function SortableActionNode(props: ActionNodeProps) {
       </button>
     ) : undefined;
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform), transition }} className={cn("relative", isDragging && "z-20")}>
+    <div ref={setNodeRef} style={{ transform: CSS.Translate.toString(transform && { ...transform, x: 0 }), transition }} className={cn("relative", isDragging && "z-20")}>
       <ActionCard {...props} handle={handle} dragging={isDragging} />
       <div className={cn("transition-opacity", isDragging && "opacity-0")}>{props.after}</div>
     </div>

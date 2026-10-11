@@ -268,10 +268,23 @@ def coerce(model: type[SQLModel], field_name: str, value: Any) -> Any:
     return result
 
 
+def _python_type(column: Any) -> type | None:
+    """Python type of a column, looking through type decorators (e.g. SQLModel's UTCDateTime reports `object`)."""
+    for sql_type in (column.type, getattr(column.type, "impl", None)):
+        if sql_type is None:
+            continue
+        try:
+            py_type = sql_type.python_type
+        except NotImplementedError:
+            continue
+        if py_type is not object:
+            return py_type
+    return None
+
+
 def _cast_param(column: Any, raw: str) -> Any:
-    try:
-        py_type = column.type.python_type
-    except NotImplementedError:
+    py_type = _python_type(column)
+    if py_type is None:
         return raw
     if py_type is bool:
         return raw.lower() in ("1", "true", "yes", "oui", "on")

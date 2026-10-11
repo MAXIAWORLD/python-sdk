@@ -329,6 +329,11 @@ class SubscriptionHooks(Hooks):
             data["owner_id"] = user.id
         return data
 
+    def before_delete(self, session, obj, user):
+        # A subscription created by mistake disappears with its MRR movements (cancel it to keep the history).
+        for change in session.exec(select(SubscriptionChange).where(SubscriptionChange.subscription_id == obj.id)).all():
+            session.delete(change)
+
     def before_save(self, session, obj, changes, created, user):
         if not obj.current_period_end:
             months = {"month": 1, "quarter": 3, "year": 12}.get(obj.interval or "month", 1)
@@ -526,6 +531,11 @@ class FormHooks(Hooks):
             data["owner_id"] = user.id
         return data
 
+    def before_delete(self, session, obj, user):
+        # Leads already created (contacts, activities, consent proofs) are kept; only the raw answers go.
+        for submission in session.exec(select(FormSubmission).where(FormSubmission.form_id == obj.id)).all():
+            session.delete(submission)
+
 
 class CampaignHooks(Hooks):
     def prepare(self, session, data, obj, user):
@@ -534,6 +544,18 @@ class CampaignHooks(Hooks):
         if obj is None and user and not data.get("owner_id"):
             data["owner_id"] = user.id
         return data
+
+    def before_delete(self, session, obj, user):
+        if obj.status in ("sending", "sent"):
+            raise HTTPException(409, "Une campagne envoyée est conservée : ses liens de désinscription doivent rester valides.")
+        for recipient in session.exec(select(CampaignRecipient).where(CampaignRecipient.campaign_id == obj.id)).all():
+            session.delete(recipient)
+
+
+class AutomationHooks(Hooks):
+    def before_delete(self, session, obj, user):
+        for run in session.exec(select(AutomationRun).where(AutomationRun.automation_id == obj.id)).all():
+            session.delete(run)
 
 
 class DocumentHooks(Hooks):
@@ -666,7 +688,7 @@ _register(Resource("form-submissions", FormSubmission, "form_submission", "répo
 _register(Resource("email-templates", EmailTemplate, "email_template", "modèle", search=("name", "subject", "body", "category"), default_sort="name"))
 _register(Resource("emails", EmailMessage, "email", "email", search=("subject", "body_text", "from_email", "from_name"), default_sort="-sent_at", events=False))
 _register(Resource("documents", Document, "document", "document", search=("name", "description", "folder", "tags"), hooks=DocumentHooks(), readonly=frozenset({"filename", "mime", "size"})))
-_register(Resource("automations", Automation, "automation", "automatisation", search=("name", "description"), write_role="manager", readonly=frozenset({"run_count", "last_run_at", "last_status"})))
+_register(Resource("automations", Automation, "automation", "automatisation", search=("name", "description"), write_role="manager", readonly=frozenset({"run_count", "last_run_at", "last_status"}), hooks=AutomationHooks()))
 _register(Resource("automation-runs", AutomationRun, "automation_run", "exécution", write_role="admin", events=False, audit=False))
 _register(Resource("webhooks", Webhook, "webhook", "webhook", search=("name", "url"), read_role="admin", write_role="admin", delete_role="admin", hooks=WebhookHooks(), events=False))
 _register(Resource("notifications", Notification, "notification", "notification", hooks=NotificationHooks(), read_role="viewer", write_role="viewer", delete_role="viewer", events=False, audit=False))

@@ -352,7 +352,7 @@ export function LineItemsEditor({ lines, onChange, franchise = false, defaultVat
           Texte
         </Button>
         <div className="w-full sm:w-[220px]">
-          <EntitySelect resource="products" value={null} params={{ active: true }} allowClear={false} placeholder="Ajouter depuis le catalogue…" onChange={(_, row) => row && addProduct(row)} className="h-8 text-[13px]" />
+          <EntitySelect resource="products" value={null} params={{ active: true }} allowClear={false} placeholder="Depuis le catalogue…" onChange={(_, row) => row && addProduct(row)} className="h-8 text-[13px]" />
         </div>
         {aiBrief !== undefined && aiBrief !== null && (
           <Button size="sm" variant="ai" className="sm:ml-auto" icon={<Sparkles className="size-3.5" />} onClick={() => setAiOpen(true)}>

@@ -88,7 +88,7 @@ export function ProductPicker({ productId, onPick, onUnlink }: { productId?: num
             }}
             className="flex items-center gap-2 border-t border-[var(--hairline)] px-4 py-2.5 text-left text-[12.5px] font-medium text-fg-2 hover:text-fg"
           >
-            <Unlink className="size-3.5" /> Dissocier du catalogue (garder le texte et le prix)
+            <Unlink className="size-3.5" /> Dissocier du catalogue
           </button>
         )}
       </Command>

@@ -100,12 +100,13 @@ export function TestPanel({ catalog, triggerType, ctx, canRun, needsSave, prepar
   return (
     <div className="space-y-3.5">
       <p className="text-[12.5px] leading-relaxed text-fg-2">
-        Rejouez le scénario sur un {t.entity ? ENTITY_LABEL[t.entity] : "déclenchement"} existant : les variables sont résolues et chaque action est simulée, <span className="font-medium text-fg">sans rien modifier</span>.
+        {t.entity ? `Rejouez le scénario sur un élément réel (${ENTITY_LABEL[t.entity]}) : les variables sont résolues et chaque action est simulée, ` : "Simulez une exécution planifiée : chaque action est déroulée à blanc, "}
+        <span className="font-medium text-fg">sans rien modifier</span>.
       </p>
       {resource && (
         <div>
           <div className="mb-1.5 text-[12.5px] font-medium text-fg-2">Élément de test</div>
-          <EntitySelect resource={resource} value={sample} onChange={(id) => setSample(id)} placeholder={`Le plus récent (${ENTITY_LABEL[t.entity ?? ""]})`} />
+          <EntitySelect resource={resource} value={sample} onChange={(id) => setSample(id)} placeholder={`Élément le plus récent (${ENTITY_LABEL[t.entity ?? ""]})`} />
         </div>
       )}
       <div className={cn("rounded-[14px] p-3 transition-colors", live ? "bg-amber-500/12 ring-1 ring-amber-500/30" : "bg-black/[0.025] dark:bg-white/[0.035]")}>

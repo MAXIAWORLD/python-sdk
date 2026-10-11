@@ -72,7 +72,6 @@ function problems(d: FormDraft) {
   if (d.fields.some((f) => !f.label.trim())) out.push("Chaque champ doit avoir un libellé.");
   if (d.fields.some((f) => f.type === "select" && !(f.options ?? []).some((o) => o.trim()))) out.push("Les listes déroulantes doivent proposer au moins une option.");
   if (d.redirect_url.trim() && !safeRedirect(d.redirect_url.trim())) out.push("L'URL de redirection doit commencer par https://.");
-  if (d.create_deal && !d.pipeline_id) out.push("Choisissez le pipeline des opportunités créées.");
   return out;
 }
 
@@ -217,8 +216,8 @@ export function FormBuilderSheet({ formId, open, onOpenChange, initialTab = "fie
             <Switch checked={draft.create_deal} onChange={(create_deal) => set({ create_deal })} label={<span className="flex items-center gap-2"><Briefcase className="size-4 text-fg-3" />Créer une opportunité</span>} description="Une affaire est ouverte à chaque réponse, rattachée au contact." />
             {draft.create_deal && (
               <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
-                <Field label="Pipeline" required>
-                  <EntitySelect resource="pipelines" value={draft.pipeline_id} initialLabel={draft.pipeline_id === form.pipeline_id ? form.pipeline?.name : undefined} onChange={(pipeline_id) => set({ pipeline_id, stage_id: null })} placeholder="Choisir…" allowClear={false} />
+                <Field label="Pipeline">
+                  <EntitySelect resource="pipelines" value={draft.pipeline_id} initialLabel={draft.pipeline_id === form.pipeline_id ? form.pipeline?.name : undefined} onChange={(pipeline_id) => set({ pipeline_id, stage_id: null })} placeholder="Pipeline par défaut" />
                 </Field>
                 <Field label="Étape" hint="Par défaut : la première étape.">
                   <EntitySelect resource="stages" params={draft.pipeline_id ? { pipeline_id: draft.pipeline_id, sort: "position" } : undefined} value={draft.stage_id} initialLabel={draft.stage_id === form.stage_id ? form.stage?.name : undefined} onChange={(stage_id) => set({ stage_id })} placeholder="Première étape" disabled={!draft.pipeline_id} />
@@ -227,7 +226,7 @@ export function FormBuilderSheet({ formId, open, onOpenChange, initialTab = "fie
             )}
           </section>
           <section className="space-y-4">
-            <Switch checked={draft.notify} onChange={(notify) => set({ notify })} label={<span className="flex items-center gap-2"><Bell className="size-4 text-fg-3" />Notifier l'équipe</span>} description="Une notification est envoyée à chaque nouvelle réponse." />
+            <Switch checked={draft.notify} onChange={(notify) => set({ notify })} label={<span className="flex items-center gap-2"><Bell className="size-4 text-fg-3" />Notifier l'équipe</span>} description="Le responsable (ou, à défaut, toute l'équipe) est prévenu à chaque nouvelle réponse." />
             <Switch checked={draft.active} onChange={(active) => set({ active })} label={<span className="flex items-center gap-2"><Send className="size-4 text-fg-3" />Formulaire actif</span>} description="Désactivé, le lien public n'accepte plus de réponses." />
           </section>
           <section>
