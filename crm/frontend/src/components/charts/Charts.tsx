@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { money, moneyShort, number } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,11 @@ import { axisTick, useChartTheme } from "./theme";
 /* Shared pieces                                                              */
 /* -------------------------------------------------------------------------- */
 
+/** SVG ids are document-wide: each chart needs its own so two charts (or a hidden copy) never share a gradient. */
+function useGradientId() {
+  return `grad-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+}
+
 interface TooltipRow {
   name?: string | number;
   value?: number | string;
@@ -16,11 +21,27 @@ interface TooltipRow {
   dataKey?: string | number;
 }
 
-export function GlassTooltip({ active, payload, label, format = (v: number) => money(v), labels = {} }: { active?: boolean; payload?: TooltipRow[]; label?: ReactNode; format?: (v: number) => string; labels?: Record<string, string> }) {
+export function GlassTooltip({
+  active,
+  payload,
+  label,
+  labelFormatter,
+  format = (v: number) => money(v),
+  labels = {},
+}: {
+  active?: boolean;
+  payload?: TooltipRow[];
+  label?: ReactNode;
+  /** Passed through by Recharts from the <Tooltip labelFormatter> prop. */
+  labelFormatter?: (label: ReactNode, payload: TooltipRow[]) => ReactNode;
+  format?: (v: number) => string;
+  labels?: Record<string, string>;
+}) {
   if (!active || !payload?.length) return null;
+  const title = label !== undefined && labelFormatter ? labelFormatter(label, payload) : label;
   return (
     <div className="glass glass-strong min-w-[170px] rounded-[14px] px-3 py-2.5 text-[12px] shadow-[var(--glass-shadow-lg)]">
-      {label !== undefined && <div className="mb-1.5 font-semibold text-fg">{label}</div>}
+      {title !== undefined && <div className="mb-1.5 font-semibold text-fg">{title}</div>}
       <div className="space-y-1">
         {payload.map((p, i) => (
           <div key={i} className="flex items-center justify-between gap-4">
@@ -56,6 +77,7 @@ export function Legend({ items }: { items: { label: string; color: string; value
 
 export function RevenueChart({ data, height = 260 }: { data: { label: string; revenue: number; cash: number }[]; height?: number }) {
   const t = useChartTheme();
+  const id = useGradientId();
   const [c1, c2] = t.series;
   return (
     <div>
@@ -65,11 +87,11 @@ export function RevenueChart({ data, height = 260 }: { data: { label: string; re
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="rev-fill" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`${id}-rev`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={c1} stopOpacity={0.22} />
               <stop offset="100%" stopColor={c1} stopOpacity={0.02} />
             </linearGradient>
-            <linearGradient id="cash-fill" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`${id}-cash`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={c2} stopOpacity={0.12} />
               <stop offset="100%" stopColor={c2} stopOpacity={0} />
             </linearGradient>
@@ -78,8 +100,8 @@ export function RevenueChart({ data, height = 260 }: { data: { label: string; re
           <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ ...axisTick, fill: t.axis }} dy={6} interval="preserveStartEnd" />
           <YAxis tickLine={false} axisLine={false} width={52} tick={{ ...axisTick, fill: t.axis }} tickFormatter={(v) => moneyShort(v)} />
           <Tooltip cursor={{ stroke: t.cursor, strokeWidth: 1 }} content={<GlassTooltip labels={{ revenue: "CA facturé HT", cash: "Encaissements" }} />} />
-          <Area type="monotone" dataKey="cash" stroke={c2} strokeWidth={2} fill="url(#cash-fill)" dot={false} activeDot={{ r: 4.5, stroke: t.surface, strokeWidth: 2 }} />
-          <Area type="monotone" dataKey="revenue" stroke={c1} strokeWidth={2.2} fill="url(#rev-fill)" dot={false} activeDot={{ r: 5, stroke: t.surface, strokeWidth: 2 }} />
+          <Area type="monotone" dataKey="cash" stroke={c2} strokeWidth={2} fill={`url(#${id}-cash)`} dot={false} activeDot={{ r: 4.5, stroke: t.surface, strokeWidth: 2 }} />
+          <Area type="monotone" dataKey="revenue" stroke={c1} strokeWidth={2.2} fill={`url(#${id}-rev)`} dot={false} activeDot={{ r: 5, stroke: t.surface, strokeWidth: 2 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -92,11 +114,12 @@ export function RevenueChart({ data, height = 260 }: { data: { label: string; re
 
 export function MrrLine({ data, height = 180 }: { data: { month: string; mrr: number }[]; height?: number }) {
   const t = useChartTheme();
+  const id = useGradientId();
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <defs>
-          <linearGradient id="mrr-fill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={`${id}-mrr`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={t.accent} stopOpacity={0.25} />
             <stop offset="100%" stopColor={t.accent} stopOpacity={0.01} />
           </linearGradient>
@@ -105,7 +128,7 @@ export function MrrLine({ data, height = 180 }: { data: { month: string; mrr: nu
         <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ ...axisTick, fill: t.axis }} tickFormatter={monthLabel} dy={6} />
         <YAxis tickLine={false} axisLine={false} width={52} tick={{ ...axisTick, fill: t.axis }} tickFormatter={(v) => moneyShort(v)} />
         <Tooltip cursor={{ stroke: t.cursor }} content={<GlassTooltip labels={{ mrr: "MRR" }} />} labelFormatter={(l) => monthLabel(String(l))} />
-        <Area type="monotone" dataKey="mrr" stroke={t.accent} strokeWidth={2.2} fill="url(#mrr-fill)" dot={false} activeDot={{ r: 5, stroke: t.surface, strokeWidth: 2 }} />
+        <Area type="monotone" dataKey="mrr" stroke={t.accent} strokeWidth={2.2} fill={`url(#${id}-mrr)`} dot={false} activeDot={{ r: 5, stroke: t.surface, strokeWidth: 2 }} />
       </AreaChart>
     </ResponsiveContainer>
   );

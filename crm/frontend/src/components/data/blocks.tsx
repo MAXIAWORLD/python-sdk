@@ -88,13 +88,14 @@ export function StatTile({ label, value, format, delta, deltaGoodWhenUp = true, 
       <div className="mt-2 text-[26px] font-semibold leading-none tracking-[-0.03em] tabular">
         <AnimatedNumber value={value} format={format} />
       </div>
-      <div className="mt-2.5 flex items-end justify-between gap-2">
+      <div className="@container mt-2.5 flex items-end justify-between gap-2">
         <div className="min-w-0">
           {delta !== undefined && <Delta value={delta} goodWhenUp={deltaGoodWhenUp} period={period} />}
           {hint && <div className="truncate text-[12px] text-fg-3">{hint}</div>}
         </div>
+        {/* The sparkline yields its room to the delta in narrow tiles (two-column grid on phones). */}
         {trend && trend.length > 1 && (
-          <div className="-mb-1 -mr-1 shrink-0">
+          <div className="-mb-1 -mr-1 hidden shrink-0 @min-[200px]:block">
             <Sparkline values={trend} width={92} height={32} />
           </div>
         )}

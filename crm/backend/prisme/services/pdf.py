@@ -15,7 +15,7 @@ from fpdf.output import PDFICCProfile
 from sqlmodel import select
 
 from ..config import settings as env
-from ..models import Invoice, Payment
+from ..models import Invoice, Payment, today
 from .invoicing import buyer_snapshot, seller_snapshot
 from .settings import get_section
 from .totals import compute
@@ -625,4 +625,44 @@ def render_quote(session: Any, quote: Any) -> bytes:
         pdf.set_x(x + 5)
         pdf.cell(80, 4.2, "précédée de la mention « Bon pour accord »", new_x=XPos.LEFT, new_y=YPos.NEXT)
     pdf.set_y(y + 48)
+    return bytes(pdf.output())
+
+
+def render_document(session: Any, label: str, title: str, subtitle: str | None, sections: list[tuple[str, str]], when: date | None = None) -> bytes:
+    """A plain business document (contract, minutes, specification…) on the company letterhead.
+
+    Section bodies are plain text: blank lines separate paragraphs, lines starting with "- " are bullets.
+    """
+    accent = _hex(get_section(session, "branding").get("accent"))
+    seller = seller_snapshot(session)
+    pdf = _new_doc(title, accent, [_legal_identity(seller)])
+    pdf.set_author(seller.get("name") or "")
+    pdf.set_subject(title)
+    _draw_header(pdf, seller, label.upper(), fr_date(when or today()), [])
+    pdf.set_font("InterBold", "", 16)
+    pdf.set_text_color(*INK)
+    pdf.multi_cell(0, 7.5, title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    if subtitle:
+        pdf.set_font("Inter", "", 9.5)
+        pdf.set_text_color(*MUTED)
+        pdf.multi_cell(0, 5, subtitle, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(4)
+    for heading, body in sections:
+        if pdf.get_y() > pdf.h - 60:
+            pdf.add_page()
+        pdf.set_font("Inter", "B", 10.5)
+        pdf.set_text_color(*pdf.accent)
+        pdf.multi_cell(0, 6, heading, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(0.8)
+        pdf.set_font("Inter", "", 9)
+        pdf.set_text_color(*INK)
+        for block in body.strip().split("\n\n"):
+            for line in block.splitlines():
+                if line.startswith("- "):
+                    pdf.set_x(pdf.l_margin + 3)
+                    pdf.multi_cell(pdf.epw - 3, 4.6, f"•  {line[2:]}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                else:
+                    pdf.multi_cell(0, 4.6, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(1.8)
+        pdf.ln(2)
     return bytes(pdf.output())

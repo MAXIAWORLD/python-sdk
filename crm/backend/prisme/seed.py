@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import random
 import re
+import secrets
 import unicodedata
 from datetime import date, datetime, time, timedelta, timezone
 
 from sqlmodel import Session, func, select
 
+from .config import settings as env
 from .crud import to_utc
 from .models import (
     Activity,
@@ -17,6 +19,7 @@ from .models import (
     Company,
     Contact,
     Deal,
+    Document,
     EmailMessage,
     EmailTemplate,
     Event,
@@ -43,8 +46,8 @@ from .models import (
 )
 from .resources import slugify
 from .security import hash_password
-from .seed_content import DEMO_THREADS, KB_ARTICLES
-from .services import invoicing
+from .seed_content import DEMO_DOCUMENTS, DEMO_THREADS, DEMO_TICKETS, KB_ARTICLES
+from .services import invoicing, pdf
 from .services.settings import get_section, update_section
 
 PIPELINES = [
@@ -577,12 +580,12 @@ def seed_demo(session: Session, admin: User) -> None:
     session.commit()
 
     # --- Support
-    ticket_subjects = ["Impossible d'exporter les factures en PDF", "Question sur la facturation électronique", "Erreur 500 sur l'API contacts", "Ajout d'utilisateurs supplémentaires", "Synchronisation du wallet échouée", "Demande de remboursement", "Comment configurer le SSO ?", "Lenteurs sur le tableau de bord", "Bug d'affichage sur mobile", "Changement d'adresse de facturation"]
     for k in range(22):
         ct = rng.choice([c for c in contacts if c.company_id])
         status = rng.choice(["open", "pending", "resolved", "closed", "new", "open", "resolved"])
         created = utcnow() - (timedelta(hours=rng.randint(1, 30)) if status in ("open", "new", "pending") else timedelta(days=rng.randint(2, 45), hours=rng.randint(0, 20)))
-        tk = Ticket(number=f"TCK-{k + 1:05d}", subject=rng.choice(ticket_subjects), description="Bonjour, nous rencontrons un problème depuis ce matin. Pouvez-vous nous aider rapidement ? Merci !", status=status, priority=rng.choice(["low", "normal", "normal", "high", "urgent"]), channel=rng.choice(["email", "chat", "portal", "phone"]), category=rng.choice(["Facturation", "Technique", "Compte", "Web3"]), company_id=ct.company_id, contact_id=ct.id, assignee_id=team[3 if len(team) > 3 else 0].id if rng.random() < 0.7 else None, created_at=created, updated_at=created)
+        subject, category, description = rng.choice(DEMO_TICKETS)
+        tk = Ticket(number=f"TCK-{k + 1:05d}", subject=subject, description=description, status=status, priority=rng.choice(["low", "normal", "normal", "high", "urgent"]), channel=rng.choice(["email", "chat", "portal", "phone"]), category=category, company_id=ct.company_id, contact_id=ct.id, assignee_id=team[3 if len(team) > 3 else 0].id if rng.random() < 0.7 else None, created_at=created, updated_at=created)
         tk.sla_due_at = created + timedelta(hours={"urgent": 4, "high": 8, "normal": 24, "low": 72}[tk.priority])
         if status in ("resolved", "closed"):
             tk.first_response_at = created + timedelta(hours=rng.randint(1, 6))
@@ -594,7 +597,7 @@ def seed_demo(session: Session, admin: User) -> None:
         session.flush()
         session.add(TicketMessage(ticket_id=tk.id, author_type="customer", author_name=ct.full_name, body=tk.description or "", created_at=created))
         if tk.first_response_at:
-            session.add(TicketMessage(ticket_id=tk.id, author_type="agent", author_name=team[3 if len(team) > 3 else 0].name, user_id=team[3 if len(team) > 3 else 0].id, body="Bonjour, merci pour votre message. Nous analysons la situation et revenons vers vous très rapidement.", created_at=tk.first_response_at))
+            session.add(TicketMessage(ticket_id=tk.id, author_type="agent", author_name=team[3 if len(team) > 3 else 0].name, user_id=team[3 if len(team) > 3 else 0].id, body=f"Bonjour {ct.first_name},\n\nMerci pour votre message. Nous analysons la situation et revenons vers vous très rapidement.", created_at=tk.first_response_at))
     session.commit()
 
     # --- Help center (the articles double as product documentation)
@@ -606,8 +609,16 @@ def seed_demo(session: Session, admin: User) -> None:
     mail_deals = [d for d in deals if d.status == "open" and d.contact_id]
     mailbox = get_section(session, "email").get("from_email") or get_section(session, "company").get("email")
     for k, thread in enumerate(DEMO_THREADS):
-        deal = mail_deals[k % len(mail_deals)] if mail_deals else None
-        ct = session.get(Contact, deal.contact_id) if deal else contacts[k % len(contacts)]
+        # The open deal the thread is about (by title), else a contact of the named company, else the next deal not yet used.
+        matching = [d for d in mail_deals if any(h in d.title for h in thread.get("deals", []))]
+        home = next((c for c in companies if c.name == thread.get("company")), None)
+        if matching or home is None:
+            deal = (matching or mail_deals or [None])[0]
+            if deal:
+                mail_deals.remove(deal)
+            ct = session.get(Contact, deal.contact_id) if deal else contacts[k % len(contacts)]
+        else:
+            deal, ct = None, (by_company.get(home.id) or [None])[0]
         if not ct or not ct.email:
             continue
         owner = session.get(User, (deal.owner_id if deal else None) or ct.owner_id or admin.id) or admin
@@ -631,6 +642,22 @@ def seed_demo(session: Session, admin: User) -> None:
             session.add(Activity(type="email", subject=f"Email {'reçu' if incoming else 'envoyé'} : {msg.subject}", body=body[:2000], contact_id=ct.id, company_id=ct.company_id, deal_id=msg.deal_id, user_id=owner.id, direction=direction, occurred_at=sent_at))
             ct.last_contacted_at = max(to_utc(ct.last_contacted_at), sent_at) if ct.last_contacted_at else sent_at
         session.add(ct)
+    session.commit()
+    # --- Documents: real PDFs on the company letterhead, filed by folder and linked to their client / project
+    company_name = get_section(session, "company").get("name") or "Nova Studio"
+
+    def fill(text: str) -> str:
+        return text.replace("{societe}", company_name)
+
+    env.uploads_dir.mkdir(parents=True, exist_ok=True)
+    for spec in DEMO_DOCUMENTS:
+        company = next((c for c in companies if c.name == spec.get("company")), None)
+        project = next((p for p in projects if p.name == spec.get("project")), None)
+        created = utcnow() - timedelta(days=spec["days_ago"], hours=rng.randint(1, 8))
+        data = pdf.render_document(session, spec["label"], fill(spec["title"]), fill(spec["subtitle"]), [(h, fill(b)) for h, b in spec["sections"]], when=created.date())
+        stored = f"{secrets.token_hex(12)}.pdf"
+        (env.uploads_dir / stored).write_bytes(data)
+        session.add(Document(name=fill(spec["name"]), filename=stored, mime="application/pdf", size=len(data), folder=spec["folder"], description=spec["description"], tags=spec["tags"], company_id=company.id if company else None, project_id=project.id if project else None, uploaded_by_id=admin.id, created_at=created, updated_at=created))
     session.commit()
     latest = session.exec(select(Activity.company_id, func.max(Activity.occurred_at)).where(Activity.company_id.isnot(None)).group_by(Activity.company_id)).all()
     for company_id, last in latest:
