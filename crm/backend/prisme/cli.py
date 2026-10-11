@@ -39,7 +39,8 @@ def main(argv: list[str] | None = None) -> None:
         host = args.host if getattr(args, "host", None) else settings.host
         port = args.port if getattr(args, "port", None) else settings.port
         print(f"\n  ✦ Prisme CRM — http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}\n  ✦ Données : {settings.data_dir}\n")
-        uvicorn.run("prisme.main:app", host=host, port=port, reload=getattr(args, "reload", False), proxy_headers=True, forwarded_allow_ips="*", log_level="info")
+        # Live update streams (SSE) never end on their own: cap the graceful shutdown so Ctrl+C / restarts are immediate.
+        uvicorn.run("prisme.main:app", host=host, port=port, reload=getattr(args, "reload", False), proxy_headers=True, forwarded_allow_ips="*", log_level="info", timeout_graceful_shutdown=3)
         return
 
     if command == "mcp":
