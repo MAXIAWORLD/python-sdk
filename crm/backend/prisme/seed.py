@@ -9,6 +9,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from sqlmodel import Session, func, select
 
+from .crud import to_utc
 from .models import (
     Activity,
     Automation,
@@ -16,6 +17,7 @@ from .models import (
     Company,
     Contact,
     Deal,
+    EmailMessage,
     EmailTemplate,
     Event,
     Form,
@@ -39,7 +41,9 @@ from .models import (
     today,
     utcnow,
 )
+from .resources import slugify
 from .security import hash_password
+from .seed_content import DEMO_THREADS, KB_ARTICLES
 from .services import invoicing
 from .services.settings import get_section, update_section
 
@@ -349,6 +353,7 @@ def seed_demo(session: Session, admin: User) -> None:
     # --- Subscriptions with MRR history
     plans = [("Prisme Cloud — Starter", 49, "PLAN-STARTER"), ("Prisme Cloud — Pro", 149, "PLAN-PRO"), ("Prisme Cloud — Business", 499, "PLAN-BUSINESS"), ("Prisme Cloud — Enterprise", 1490, "PLAN-ENT"), ("Maintenance & support premium", 390, "SUP-PREMIUM")]
     clients = [c for c in companies if c.type == "client"]
+    steady: list[Subscription] = []
     for c in clients:
         for _ in range(rng.choice([1, 1, 1, 2])):
             plan, price, sku = rng.choice(plans)
@@ -394,7 +399,23 @@ def seed_demo(session: Session, admin: User) -> None:
                     sub.discount = 20
                 if round(sub.mrr - old, 2) < 0:
                     session.add(SubscriptionChange(subscription_id=sub.id, company_id=c.id, date=when, kind="contraction", mrr_delta=round(sub.mrr - old, 2), mrr_after=sub.mrr))
+            else:
+                steady.append(sub)
             session.add(sub)
+    # A realistic MRR story needs losses too: two recent churns and two contractions on long-standing subscriptions.
+    for k, sub in enumerate([s for s in steady if (t - s.start_date).days > 200][:4]):
+        when = t - timedelta(days=(16, 44, 79, 121)[k])
+        old = sub.mrr
+        if k % 2 == 0:
+            session.add(SubscriptionChange(subscription_id=sub.id, company_id=sub.company_id, date=when, kind="churn", mrr_delta=-old, mrr_after=0))
+            sub.status, sub.canceled_at, sub.cancel_reason = "canceled", when, ("Budget", "Changement d'outil")[k // 2]
+        else:
+            if sub.quantity > 1:
+                sub.quantity -= 1
+            else:
+                sub.discount = 20
+            session.add(SubscriptionChange(subscription_id=sub.id, company_id=sub.company_id, date=when, kind="contraction", mrr_delta=round(sub.mrr - old, 2), mrr_after=sub.mrr))
+        session.add(sub)
     session.commit()
 
     # --- Quotes
@@ -554,13 +575,6 @@ def seed_demo(session: Session, admin: User) -> None:
         deal = rng.choice([d for d in deals if d.company_id == ct.company_id] or [None])
         session.add(Activity(type=kind, subject=rng.choice(act_subjects[kind]), body=rng.choice(["Échange constructif, intérêt confirmé.", "Le client souhaite une proposition sous 10 jours.", "Points de vigilance : délais et intégration au SI existant.", "Très bon feeling, prochaine étape : démo technique.", None]), contact_id=ct.id, company_id=ct.company_id, deal_id=deal.id if deal else None, user_id=rng.choice(team).id, occurred_at=when, duration_minutes=rng.choice([15, 30, 45, 60]) if kind in ("call", "meeting") else None, outcome=rng.choice(["Joint", "Messagerie", "Pas de réponse"]) if kind == "call" else None, direction="out" if kind in ("call", "email") else None))
     session.commit()
-    latest = session.exec(select(Activity.company_id, func.max(Activity.occurred_at)).where(Activity.company_id.isnot(None)).group_by(Activity.company_id)).all()
-    for company_id, last in latest:
-        company = session.get(Company, company_id)
-        if company:
-            company.last_activity_at = last
-            session.add(company)
-    session.commit()
 
     # --- Support
     ticket_subjects = ["Impossible d'exporter les factures en PDF", "Question sur la facturation électronique", "Erreur 500 sur l'API contacts", "Ajout d'utilisateurs supplémentaires", "Synchronisation du wallet échouée", "Demande de remboursement", "Comment configurer le SSO ?", "Lenteurs sur le tableau de bord", "Bug d'affichage sur mobile", "Changement d'adresse de facturation"]
@@ -583,17 +597,47 @@ def seed_demo(session: Session, admin: User) -> None:
             session.add(TicketMessage(ticket_id=tk.id, author_type="agent", author_name=team[3 if len(team) > 3 else 0].name, user_id=team[3 if len(team) > 3 else 0].id, body="Bonjour, merci pour votre message. Nous analysons la situation et revenons vers vous très rapidement.", created_at=tk.first_response_at))
     session.commit()
 
-    kb = [
-        ("Émettre une facture conforme", "Facturation", "Les étapes pour émettre une facture avec toutes les mentions obligatoires."),
-        ("Comprendre la facturation électronique 2026-2027", "Facturation", "Calendrier de la réforme, Factur-X et plateformes agréées."),
-        ("Corriger une facture avec un avoir", "Facturation", "Pourquoi une facture émise ne se modifie pas et comment émettre un avoir."),
-        ("Connecter Claude à votre CRM (MCP)", "Intégrations", "Utiliser votre abonnement Claude pour piloter le CRM."),
-        ("Inviter votre équipe et gérer les rôles", "Compte", "Administrateur, manager, membre, lecteur."),
-        ("Importer vos contacts depuis un fichier CSV", "Données", "Correspondance des colonnes et dédoublonnage."),
-        ("Exercer les droits RGPD d'un contact", "Conformité", "Export, anonymisation et registre des consentements."),
-    ]
-    for title, category, summary in kb:
-        session.add(KbArticle(title=title, slug=title.lower().replace(" ", "-").replace("'", "")[:60], category=category, summary=summary, body=f"# {title}\n\n{summary}\n\n## Étapes\n\n1. Ouvrez le module concerné.\n2. Suivez l'assistant.\n3. Vérifiez le résultat.\n\n> Astuce : l'assistant IA peut le faire pour vous.", status="published", views=rng.randint(10, 400), author_id=admin.id))
+    # --- Help center (the articles double as product documentation)
+    for article in KB_ARTICLES:
+        session.add(KbArticle(**article, slug=slugify(article["title"]), status="published", views=rng.randint(40, 600), helpful=rng.randint(3, 40), author_id=admin.id))
+    session.commit()
+
+    # --- Mailbox: recent threads with the contacts of open deals
+    mail_deals = [d for d in deals if d.status == "open" and d.contact_id]
+    mailbox = get_section(session, "email").get("from_email") or get_section(session, "company").get("email")
+    for k, thread in enumerate(DEMO_THREADS):
+        deal = mail_deals[k % len(mail_deals)] if mail_deals else None
+        ct = session.get(Contact, deal.contact_id) if deal else contacts[k % len(contacts)]
+        if not ct or not ct.email:
+            continue
+        owner = session.get(User, (deal.owner_id if deal else None) or ct.owner_id or admin.id) or admin
+        company = session.get(Company, ct.company_id) if ct.company_id else None
+        values = {"{prenom}": ct.first_name or "", "{contact}": ct.full_name, "{vendeur}": owner.name.split()[0], "{signature}": owner.name, "{entreprise}": company.name if company else "votre entreprise"}
+        previous = None
+        for n, (direction, hours_ago, body, read, starred) in enumerate(thread["messages"]):
+            for key, value in values.items():
+                body = body.replace(key, value)
+            sent_at = utcnow() - timedelta(hours=hours_ago, minutes=rng.randint(0, 50))
+            incoming = direction == "in"
+            msg = EmailMessage(
+                direction=direction, folder="inbox" if incoming else "sent", status="received" if incoming else "sent",
+                from_email=ct.email if incoming else owner.email, from_name=ct.full_name if incoming else owner.name,
+                to=[(owner.email or mailbox) if incoming else ct.email], subject=("Re: " if n else "") + thread["subject"], body_text=body,
+                contact_id=ct.id, company_id=ct.company_id, deal_id=deal.id if deal else None, user_id=owner.id,
+                message_id=f"<demo-{k}-{n}@prisme.local>", in_reply_to=previous, thread_key=f"demo-{k}", sent_at=sent_at, read=read, starred=starred,
+            )
+            previous = msg.message_id
+            session.add(msg)
+            session.add(Activity(type="email", subject=f"Email {'reçu' if incoming else 'envoyé'} : {msg.subject}", body=body[:2000], contact_id=ct.id, company_id=ct.company_id, deal_id=msg.deal_id, user_id=owner.id, direction=direction, occurred_at=sent_at))
+            ct.last_contacted_at = max(to_utc(ct.last_contacted_at), sent_at) if ct.last_contacted_at else sent_at
+        session.add(ct)
+    session.commit()
+    latest = session.exec(select(Activity.company_id, func.max(Activity.occurred_at)).where(Activity.company_id.isnot(None)).group_by(Activity.company_id)).all()
+    for company_id, last in latest:
+        company = session.get(Company, company_id)
+        if company:
+            company.last_activity_at = last
+            session.add(company)
     session.commit()
 
     # --- Marketing
