@@ -1,0 +1,47 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "claude",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        {
+          "name": "AskClaudeIntent",
+          "slots": [
+            { "name": "query", "type": "AMAZON.SearchQuery" }
+          ],
+          "samples": [
+            "de {query}",
+            "que {query}",
+            "qui {query}",
+            "pour {query}",
+            "si {query}",
+            "comment {query}",
+            "quand {query}",
+            "pourquoi {query}",
+            "quel {query}",
+            "quelle {query}",
+            "où {query}",
+            "combien {query}",
+            "est-ce que {query}",
+            "lis {query}",
+            "lance {query}",
+            "fais {query}",
+            "dis {query}",
+            "raconte {query}",
+            "explique {query}",
+            "donne {query}",
+            "écris {query}",
+            "trouve {query}",
+            "cherche {query}",
+            "calcule {query}"
+          ]
+        }
+      ],
+      "types": []
+    }
+  }
+}
